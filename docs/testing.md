@@ -17,8 +17,7 @@ PTY, no terminal, and no I/O:
 - CLI flag parsing
 - Configuration / option resolution
 
-Run with `cargo test --bins` (a library target will be added once
-shared logic is extracted).
+Run with `cargo test --lib`.
 
 ### 2. Integration tests (`tests/`)
 
@@ -77,13 +76,10 @@ time.
 
 ```sh
 cargo test                        # all layers
-cargo test --bins                 # binary unit tests only
+cargo test --lib                  # unit tests only
 cargo test --test '*'             # integration + E2E
 cargo insta review                # review pending snapshots
 ```
-
-> Once shared logic is extracted into a library target, switch
-> `cargo test --bins` to `cargo test --lib` for unit-only runs.
 
 ## Adding a test
 
