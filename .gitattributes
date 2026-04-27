@@ -1,0 +1,19 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Binary files
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.png binary
+*.webp binary
+
+# Exclude from distribution archives
+.coderabbit.yaml export-ignore
+.git* export-ignore
+.imgbotconfig export-ignore
+
+# Documentation files
+AGENTS.md linguist-documentation
+CLAUDE.md linguist-documentation
