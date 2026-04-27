@@ -18,7 +18,8 @@ PTY, no terminal, and no I/O:
 - Configuration / option resolution
 
 Run with `cargo test --bins` (this crate has no library target;
-`cargo test --lib` would silently run nothing until a `[lib]` is
+`cargo test --lib` is not applicable and typically errors with
+`error: no library targets found in package` until a `[lib]` is
 introduced).
 
 ### 2. Integration tests (`tests/`)
