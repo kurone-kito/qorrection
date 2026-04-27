@@ -85,11 +85,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        # `rustup toolchain install` (with no args) reads
-        # rust-toolchain.toml and installs the pinned channel
-        # together with its declared components.
+        # Pass the channel explicitly because newer rustup releases
+        # require at least one toolchain spec for `rustup toolchain
+        # install`. The channel matches rust-toolchain.toml.
         run: |
-          rustup toolchain install
+          rustup toolchain install stable --profile minimal
           rustup target add ${{ matrix.target }}
       - name: Install cross-build tooling (linux)
         if: runner.os == 'Linux'
