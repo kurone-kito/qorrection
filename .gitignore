@@ -118,6 +118,13 @@ $RECYCLE.BIN/
 
 ### THE PROJECT SPECIFIES #################################################
 
+### Rust ###
+# Cargo build directory
+/target/
+
+# Backup files emitted by `cargo fmt --check` workflows
+**/*.rs.bk
+
 ### AI Agents ###
 # Claude Code local config
 .claude/

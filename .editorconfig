@@ -10,3 +10,8 @@ trim_trailing_whitespace = true
 
 [*.md]
 trim_trailing_whitespace = false
+
+# Rust formatting follows `rustfmt` defaults (4-space indent),
+# which differs from the project-wide 2-space rule.
+[*.rs]
+indent_size = 4
