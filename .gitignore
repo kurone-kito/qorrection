@@ -122,7 +122,9 @@ $RECYCLE.BIN/
 # Cargo build directory
 /target/
 
-# Backup files emitted by `cargo fmt --check` workflows
+# Backup files emitted by `rustfmt` when run with the legacy
+# `--backup` flag (or older write modes) — `cargo fmt --check`
+# itself is read-only and never writes these.
 **/*.rs.bk
 
 ### AI Agents ###
