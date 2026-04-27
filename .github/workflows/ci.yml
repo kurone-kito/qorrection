@@ -6,7 +6,7 @@ concurrency:
   # `github.event.pull_request.number`, so keying on either alone
   # leaves both runs alive. Key on the head repo + head branch (or
   # ref, for push events on `main` etc.) so duplicate runs collapse.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
 name: CI
 on:
   push:
