@@ -17,10 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        # `rustup toolchain install` (with no args) reads
-        # rust-toolchain.toml and installs the pinned channel
-        # together with its declared components.
-        run: rustup toolchain install
+        # Install the channel pinned in rust-toolchain.toml together
+        # with the components it declares. We pass the channel
+        # explicitly because newer rustup releases require at least
+        # one toolchain spec for `rustup toolchain install`.
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
@@ -30,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        run: rustup toolchain install
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -56,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        run: rustup toolchain install
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
       - name: cargo build
         run: cargo build --verbose --all-targets
