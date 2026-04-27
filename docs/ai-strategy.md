@@ -1,8 +1,9 @@
 # AI tooling strategy
 
-This repository currently prioritizes GitHub Copilot because it
-provides the best latency and workflow fit for day-to-day vibe coding
-in this template.
+This repository implements **qorrection** in Rust. AI-assisted
+contributions are first-class because the project began as a vibe-
+coded experiment, and Copilot CLI plus VS Code Copilot Chat remain
+the primary day-to-day tools.
 
 ## Canonical guidance
 
@@ -31,14 +32,12 @@ in this template.
 
 ## Onboarding detection
 
-When the repository name is not `template` and the AI instruction
-files still contain the generic sentinel phrase, AI agents should
-proactively propose a customization workflow. This keeps the
-template's "vibe-coding ready" promise alive in derived projects by
-guiding users through documentation, tooling, and guideline
-specialization immediately after they create a new repository from
-the template. The full onboarding checklist is maintained in
-`.github/copilot-instructions.md` § Onboarding.
+Onboarding from the upstream generic template is complete. The
+sentinel phrase has been removed from all AI instruction files,
+so derived-template detection no longer applies here. If a future
+change introduces a second language or otherwise triggers a
+template-style restructuring, surface it as a plan-mode proposal
+before editing instructions.
 
 ## Maintenance notes
 

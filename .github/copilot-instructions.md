@@ -1,10 +1,19 @@
 # Guidelines for AI Agents
 
-This project is a language-independent generic project template.
+This repository implements **qorrection** — a PTY wrapper that
+intercepts Vim-style quit commands typed into other CLI tools
+and replies with playful animations (e.g. a passing ambulance
+for `:q`, `:wq`, `:q!`). The published binary also ships under
+the alias **`q9`** (*kyuukyuu*, the Japanese word for ambulance).
 
-When contributing to this repository using AI agents, adhere to the
-following guidelines to ensure high-quality contributions that align with
-the project's standards and practices:
+The implementation language is **Rust**, distributed as a single
+self-contained binary for Linux, macOS, and Windows. Joke value
+notwithstanding, the engineering bar matches `sl`: clean code,
+robust cross-platform PTY handling, and meaningful tests.
+
+When contributing to this repository using AI agents, adhere to
+the following guidelines to ensure high-quality contributions
+that align with the project's standards and practices:
 
 ## Tooling priority and compatibility
 
@@ -193,13 +202,107 @@ feat: add auth system and refactor database layer and update docs
 
 ## Coding Standards
 
-- **Indentation**: 2 spaces (enforced by `.editorconfig`)
+- **Indentation**: 2 spaces project-wide (enforced by
+  `.editorconfig`). **Exception:** Rust source files (`*.rs`)
+  use 4-space indentation as enforced by `rustfmt`; the
+  `.editorconfig` already encodes this override.
 - **Line endings**: LF only (enforced by `.editorconfig` and
   `.gitattributes`)
 - **Trailing whitespace**: trimmed (except in Markdown)
 - **Final newline**: always present
 - **File naming**: lowercase with hyphens (e.g., `feature-request.yml`)
   unless constrained by a platform convention (e.g., `CONTRIBUTING.md`)
+
+## Rust conventions
+
+- **Toolchain**: `stable`, pinned via `rust-toolchain.toml`. MSRV
+  is declared in `Cargo.toml` (`rust-version`); bumping the MSRV
+  requires its own atomic commit.
+- **Formatting**: `cargo fmt --check` must pass. `rustfmt.toml`
+  controls the rules — do not opt out per-file.
+- **Lints**: `cargo clippy --all-targets -- -D warnings` must pass.
+  Allow only with a written justification, scoped narrowly
+  (`#[allow(clippy::<lint>)] // <why>`).
+- **Error handling**: `anyhow::Result` at the binary boundary;
+  define explicit `thiserror`-derived errors at library module
+  boundaries when one is introduced.
+- **Logging / diagnostics**: prefer `tracing` over `eprintln!`
+  once the project grows beyond placeholder code.
+- **Dependencies**: justify each new dependency in the commit
+  body. Prefer the agreed core set (`portable-pty`, `crossterm`,
+  `clap`, `anyhow`, `thiserror`, `tracing`) before introducing
+  alternatives.
+- **`unsafe`**: forbidden by default. Any introduction requires
+  a SAFETY comment and a rubber-duck review pass.
+- **Cargo.lock**: committed (this crate is a binary).
+
+## Testing strategy
+
+- **Unit tests** live next to the code (`#[cfg(test)] mod tests`).
+- **Integration tests** live under `tests/` and exercise the
+  binaries through `assert_cmd`.
+- **PTY end-to-end tests** drive the wrapper through a real PTY
+  with `rexpect` (or equivalent). Mark them `#[ignore]` if they
+  cannot run reliably in CI on a given platform, and document
+  why.
+- **Animation snapshots** use `insta` so ANSI frame output is
+  reviewable without running a real PTY. Snapshot updates
+  belong in their own commit.
+- **Cross-platform coverage**: CI runs on Linux, macOS, and
+  Windows. Windows ConPTY behavior must be exercised early —
+  do not assume Unix-only PTY semantics.
+
+## Dependency policy
+
+- Run `cargo update` deliberately, not opportunistically. A
+  lockfile bump is its own commit.
+- Treat `cargo deny` (license + advisory) as the source of
+  truth; any allow-list entry needs a comment.
+- Pin major versions in `Cargo.toml`; let `Cargo.lock` track
+  the minor/patch.
+
+## Self-review cycle (rubber-duck pass)
+
+For non-trivial changes, run a rubber-duck self-review **before
+opening the PR** and iterate until no rational findings remain.
+
+**When required (must run):**
+
+- New features or new modules
+- Changes touching multiple files or crossing module boundaries
+- Bug fixes whose root cause is non-obvious
+- PTY, threading, async, or `unsafe` code
+- Changes to public APIs or CLI flags
+- Cross-platform behavior changes (anything Windows-specific
+  qualifies)
+
+**When optional (skip is fine):**
+
+- Pure typo / wording fixes in docs and comments
+- Mechanical renames handled by an IDE refactor
+- Dependency lockfile-only updates
+- Formatting-only commits (`cargo fmt`)
+
+**Procedure:**
+
+1. After implementation passes local checks (`cargo fmt --check`,
+   `cargo clippy -D warnings`, `cargo test`), invoke the
+   rubber-duck agent with the relevant diff and context.
+2. **Filter the findings** — keep those that prevent bugs,
+   correctness issues, race conditions, security holes, or
+   clearly improve testability. Discard style nits, speculative
+   "could be nicer" suggestions, and findings that would
+   significantly complicate the implementation without a
+   matching benefit. Briefly note the rationale for each
+   discard in the working notes.
+3. Address every retained finding in **separate atomic commits**
+   (do not amend the original feature commit).
+4. Re-run the rubber-duck pass on the updated diff.
+5. Repeat until the filtered finding count is zero.
+
+This cycle is intentionally costly. It is the highest-leverage
+quality lever available, and applying it only to non-trivial
+changes keeps the cost proportional to the risk.
 
 ## Guardrails
 
@@ -208,54 +311,9 @@ feat: add auth system and refactor database layer and update docs
 
 ## Onboarding
 
-This project template is generic and language-independent.
-If you plan to implement a language-specific project based on this one,
-**submit a proposal to customize this documentation first**.
-
-### Derived-repository detection
-
-When an AI agent starts a session, it should determine whether this
-repository is the **base template** or a **derived project**:
-
-1. **Check the repository name** — inspect the git remote URL
-   (e.g., `git remote get-url origin`), the working-directory name,
-   or any GitHub API context available to the agent. If the
-   repository name is exactly `template`, treat it as the base
-   template. Any other name indicates a derived project.
-2. **Check for generic content** — look for the sentinel phrase
-   `language-independent generic project template` in this file or
-   in the repository's AI instruction files. Its presence means the
-   guidelines have **not yet been customized**.
-
-If both conditions are met — the repository is derived **and** the
-guidelines are still generic — the agent should **proactively
-propose an onboarding workflow** before proceeding with the user's
-request. The proposal should be conversational, brief, and
-non-blocking (the user may decline and continue normally).
-
-### Onboarding proposal
-
-When proposing onboarding, suggest customizing the following areas
-in a single plan:
-
-1. **Project description** — update `README.md` and the opening
-   lines of AI instruction files to reflect the project's purpose
-2. **Language / framework** — identify the primary language and
-   framework; add relevant linter, formatter, and build tooling
-3. **Dependency management** — set up the appropriate package
-   manager (npm, pip, cargo, etc.) and lock-file conventions
-4. **Testing strategy** — define the test runner, coverage targets,
-   and test-file conventions
-5. **CI/CD workflows** — adjust `.github/workflows/` to match the
-   project's build, test, and deploy pipeline
-6. **AI guideline specialization** — rewrite this file,
-   `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` to include
-   project-specific rules, coding patterns, and architecture notes
-7. **README rewrite** — replace the template README with
-   project-specific content (badges, installation, usage, etc.)
-8. **License review** — confirm or replace the MIT license if the
-   project requires a different one
-
-Present these items as a checklist proposal (e.g., in Plan mode for
-Copilot, or as a numbered list for other agents). Let the user
-select which items to tackle and in what order.
+This repository has already completed the initial onboarding from
+the upstream generic template. Treat the AI guidance, tooling,
+and CI as project-specific. If a future change requires another
+round of onboarding-style customization (e.g., adopting a new
+language alongside Rust), surface it as a plan-mode proposal
+before editing instructions or workflows.

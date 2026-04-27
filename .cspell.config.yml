@@ -25,6 +25,8 @@ language: en,ja
 useGitignore: true
 version: '0.2'
 words:
+  - insta
   - kito
   - kyuukyuu
   - qorrection
+  - rexpect
