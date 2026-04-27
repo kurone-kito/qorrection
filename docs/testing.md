@@ -17,7 +17,9 @@ PTY, no terminal, and no I/O:
 - CLI flag parsing
 - Configuration / option resolution
 
-Run with `cargo test --lib`.
+Run with `cargo test --bins` (this crate has no library target;
+`cargo test --lib` would silently run nothing until a `[lib]` is
+introduced).
 
 ### 2. Integration tests (`tests/`)
 
@@ -29,7 +31,9 @@ real PTY:
 - Exit codes for invalid invocations
 - Non-interactive `--418` mode
 
-Run with `cargo test --test '*'`.
+Run with `cargo test --tests` (Cargo's `--test <name>` flag takes
+a single integration-test target name and does not accept globs,
+so `cargo test --test '*'` would not match anything).
 
 ### 3. PTY end-to-end tests
 
@@ -76,8 +80,8 @@ time.
 
 ```sh
 cargo test                        # all layers
-cargo test --lib                  # unit tests only
-cargo test --test '*'             # integration + E2E
+cargo test --bins                 # unit tests embedded in binaries
+cargo test --tests                # integration + E2E
 cargo insta review                # review pending snapshots
 ```
 
