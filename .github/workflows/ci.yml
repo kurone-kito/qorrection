@@ -49,6 +49,38 @@ jobs:
           command: check
           arguments: --all-features
 
+  msrv:
+    name: MSRV (Cargo.toml rust-version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Read MSRV from Cargo.toml
+        id: msrv
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Use cargo metadata so this stays correct under any future
+          # workspace/inheritance changes and tolerates field reorder.
+          # We need a Rust toolchain to invoke `cargo metadata`; the
+          # currently installed one is fine (it does not affect MSRV).
+          rustup toolchain install stable --profile minimal
+          version="$(cargo metadata --no-deps --format-version 1 \
+            | grep -oE '"rust_version":"[^"]+"' \
+            | head -n1 \
+            | cut -d'"' -f4)"
+          if [ -z "${version}" ]; then
+            echo "::error::Failed to extract rust-version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+      - name: Install MSRV toolchain
+        run: rustup toolchain install ${{ steps.msrv.outputs.version }} --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv-${{ steps.msrv.outputs.version }}
+      - name: cargo check on MSRV
+        run: cargo +${{ steps.msrv.outputs.version }} check --locked --all-targets --all-features
+
   test:
     name: Test (${{ matrix.os }})
     needs: [fmt, clippy, deny]
