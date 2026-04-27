@@ -1,6 +1,9 @@
 concurrency:
   cancel-in-progress: true
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Collapse push and pull_request runs for the same commit so
+  # intra-repo PRs do not duplicate work. `github.event.pull_request.number`
+  # exists only for PR events; `github.ref` is used for push events.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
 name: CI
 on:
   push:
