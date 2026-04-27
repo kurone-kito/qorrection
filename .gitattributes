@@ -13,7 +13,3 @@
 .coderabbit.yaml export-ignore
 .git* export-ignore
 .imgbotconfig export-ignore
-
-# Documentation files
-AGENTS.md linguist-documentation
-CLAUDE.md linguist-documentation

@@ -18,10 +18,10 @@ ignorePaths:
   - .git
   - .github/CODE_OF_CONDUCT.*
   - .vscode/extensions.json
+ignoreRegExpList:
+  - kuroné?
 language: en,ja
 useGitignore: true
 version: '0.2'
 words:
   - kito
-  - kuron
-  - kuroné

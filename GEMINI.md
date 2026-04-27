@@ -1,8 +1,8 @@
 # Guidelines for AI Agents
 
 This project is a language-independent generic project template.
-It is currently optimized for GitHub Copilot tooling, but `CLAUDE.md`
-exists so Claude Code can still receive the minimum project rules
+It is currently optimized for GitHub Copilot tooling, but `GEMINI.md`
+exists so Gemini CLI can still receive the minimum project rules
 immediately, without depending on a redirect.
 
 ## Immediate rules
@@ -63,5 +63,5 @@ See the full onboarding checklist in
 The full, Copilot-first project guidance lives in
 [.github/copilot-instructions.md](.github/copilot-instructions.md).
 When that file uses Copilot-specific workflow names, apply the intent
-in Claude Code using its own interaction model rather than following
+in Gemini CLI using its own interaction model rather than following
 the product terms literally.
