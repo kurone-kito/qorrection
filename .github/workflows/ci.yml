@@ -67,14 +67,25 @@ jobs:
           # We need a Rust toolchain to invoke `cargo metadata`; the
           # currently installed one is fine (it does not affect MSRV).
           rustup toolchain install stable --profile minimal
+          # Parse the metadata structurally and select the package
+          # named `qorrection` so this keeps working if/when this
+          # repository grows into a multi-package workspace. Failing
+          # closed with an explicit diagnostic is preferred over the
+          # previous grep+head pipeline, which would have silently
+          # picked a workspace member's MSRV instead.
           version="$(cargo metadata --no-deps --format-version 1 \
-            | grep -oE '"rust_version":"[^"]+"' \
-            | head -n1 \
-            | cut -d'"' -f4)"
-          if [ -z "${version}" ]; then
-            echo "::error::Failed to extract rust-version from Cargo.toml" >&2
-            exit 1
-          fi
+            | python3 -c '
+          import json
+          import sys
+          data = json.load(sys.stdin)
+          pkg = next((p for p in data["packages"] if p["name"] == "qorrection"), None)
+          if pkg is None:
+              sys.exit("error: package \"qorrection\" not found in cargo metadata output")
+          rv = pkg.get("rust_version")
+          if not rv:
+              sys.exit("error: package \"qorrection\" has no rust-version field")
+          print(rv)
+          ')"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - name: Install MSRV toolchain
         run: rustup toolchain install ${{ steps.msrv.outputs.version }} --profile minimal
