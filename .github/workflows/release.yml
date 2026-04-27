@@ -65,29 +65,32 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        # `rustup show` reads rust-toolchain.toml and installs the
-        # pinned channel (with declared components) if missing.
+        # `rustup toolchain install` (with no args) reads
+        # rust-toolchain.toml and installs the pinned channel
+        # together with its declared components.
         run: |
-          rustup show
+          rustup toolchain install
           rustup target add ${{ matrix.target }}
-      - name: Install cross-compilation tooling (linux musl)
+      - name: Install cross-build tooling (linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-musl" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-            mkdir -p .cargo
-            {
-              echo "[target.aarch64-unknown-linux-musl]"
-              echo "linker = \"aarch64-linux-gnu-gcc\""
-            } >> .cargo/config.toml
-          fi
+        # `cross` runs the build inside the cross-rs Docker image
+        # for the requested target, which already ships a working
+        # musl cross compiler and linker for both x86_64 and
+        # aarch64 — no host apt packages required.
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
       - name: Build release binaries
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cross build --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
       - name: Verify Linux binaries are statically linked
         if: runner.os == 'Linux'
         shell: bash
