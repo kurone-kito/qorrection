@@ -135,7 +135,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stage="qorrection-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          # `GITHUB_REF_NAME` for tag pushes is the tag itself
+          # (e.g. `v0.1.0`), but for `workflow_dispatch` runs it is
+          # the branch name and may contain `/` (e.g. `feature/foo`).
+          # A `/` in the stage name would create a nested directory,
+          # break the upload glob (`dist/qorrection-*.${archive}`),
+          # and fail the job with `if-no-files-found: error`.
+          # Replace any path separators with `-` so the staged name
+          # is always a single safe filename component.
+          safe_ref="${GITHUB_REF_NAME//\//-}"
+          stage="qorrection-${safe_ref}-${{ matrix.target }}"
           mkdir -p "dist/${stage}"
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp "target/${{ matrix.target }}/release/qorrection.exe" "dist/${stage}/"
