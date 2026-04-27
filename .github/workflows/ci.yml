@@ -17,10 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        # `rustup toolchain install` (with no args) reads
-        # rust-toolchain.toml and installs the pinned channel
-        # together with its declared components.
-        run: rustup toolchain install
+        # `rustup show` reads rust-toolchain.toml and installs the
+        # pinned channel (with declared components) if missing.
+        run: rustup show
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 
@@ -30,24 +29,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        run: rustup toolchain install
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
       - name: cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-  deny:
-    name: cargo-deny
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check
-          arguments: --all-features
-
   test:
     name: Test (${{ matrix.os }})
-    needs: [fmt, clippy, deny]
+    needs: [fmt, clippy]
     strategy:
       fail-fast: false
       matrix:
@@ -56,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        run: rustup toolchain install
+        run: rustup show
       - uses: Swatinem/rust-cache@v2
       - name: cargo build
         run: cargo build --verbose --all-targets

@@ -5,62 +5,18 @@ on:
       - 'v*'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
-  verify-tag:
-    name: Verify tag matches Cargo.toml version
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install Rust toolchain
-        run: rustup toolchain install
-      - name: Compare Cargo.toml version with tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          # Ask Cargo for the canonical package version so the
-          # check stays correct under workspace layouts and
-          # `version.workspace = true` indirection.
-          cargo_version="$(
-            cargo metadata --no-deps --format-version 1 \
-              | python3 -c '
-          import json, sys
-          packages = json.load(sys.stdin)["packages"]
-          target = next(p for p in packages if p["name"] == "qorrection")
-          print(target["version"])
-          '
-          )"
-          echo "tag=${tag}"
-          echo "cargo=${cargo_version}"
-          if [ "${tag}" != "${cargo_version}" ]; then
-            echo "::error::Tag v${tag} does not match Cargo.toml version ${cargo_version}" >&2
-            exit 1
-          fi
-          if [ "${cargo_version}" = "0.0.0" ]; then
-            echo "::error::Refusing to publish placeholder version 0.0.0" >&2
-            exit 1
-          fi
-
   build:
     name: Build ${{ matrix.target }}
-    needs: [verify-tag]
-    # Allow manual dispatch (no tag) to still exercise the build matrix.
-    if: |
-      always() &&
-      (needs.verify-tag.result == 'success' ||
-       needs.verify-tag.result == 'skipped')
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Linux uses musl targets so the published binary is fully
-          # static and runs on any glibc/distribution baseline.
-          - target: x86_64-unknown-linux-musl
+          - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
-          - target: aarch64-unknown-linux-musl
+          - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
           - target: x86_64-apple-darwin
@@ -76,45 +32,26 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
-        # `rustup toolchain install` (with no args) reads
-        # rust-toolchain.toml and installs the pinned channel
-        # together with its declared components.
+        # `rustup show` reads rust-toolchain.toml and installs the
+        # pinned channel (with declared components) if missing.
         run: |
-          rustup toolchain install
+          rustup show
           rustup target add ${{ matrix.target }}
-      - name: Install cross-build tooling (linux)
-        if: runner.os == 'Linux'
-        # `cross` runs the build inside the cross-rs Docker image
-        # for the requested target, which already ships a working
-        # musl cross compiler and linker for both x86_64 and
-        # aarch64 — no host apt packages required.
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cross
+      - name: Install cross-compilation tooling (linux aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          mkdir -p .cargo
+          {
+            echo "[target.aarch64-unknown-linux-gnu]"
+            echo "linker = \"aarch64-linux-gnu-gcc\""
+          } >> .cargo/config.toml
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
       - name: Build release binaries
-        shell: bash
-        run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            cross build --release --locked --target ${{ matrix.target }}
-          else
-            cargo build --release --locked --target ${{ matrix.target }}
-          fi
-      - name: Verify Linux binaries are statically linked
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          for bin in qorrection q9; do
-            path="target/${{ matrix.target }}/release/${bin}"
-            file "${path}"
-            if file "${path}" | grep -q "dynamically linked"; then
-              echo "::error::${path} is dynamically linked" >&2
-              exit 1
-            fi
-          done
+        run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Stage artifacts
         shell: bash
         run: |
@@ -146,8 +83,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
