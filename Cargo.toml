@@ -1,0 +1,40 @@
+[package]
+name = "qorrection"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.78"
+authors = ["Kuroné Kito (黒音キト) <krone@kit.black>"]
+description = "PTY wrapper that intercepts Vim-style quit commands typed into other CLI tools and responds with playful animations."
+readme = "README.md"
+repository = "https://github.com/kurone-kito/qorrection"
+homepage = "https://github.com/kurone-kito/qorrection"
+license = "MIT OR Apache-2.0"
+keywords = ["pty", "cli", "tui", "joke", "vim"]
+categories = ["command-line-utilities"]
+include = [
+  "src/**/*",
+  "Cargo.toml",
+  "Cargo.lock",
+  "README.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[[bin]]
+name = "qorrection"
+path = "src/main.rs"
+
+# `q9` alias is provided as a separate binary so the published crate
+# installs both entry points via `cargo install qorrection`.
+[[bin]]
+name = "q9"
+path = "src/bin/q9.rs"
+
+[dependencies]
+
+[dev-dependencies]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
