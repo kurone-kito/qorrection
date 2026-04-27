@@ -105,7 +105,7 @@ jobs:
         # for the requested target, which already ships a working
         # musl cross compiler and linker for both x86_64 and
         # aarch64 — no host apt packages required.
-        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
+        uses: taiki-e/install-action@481c34c1cf3a84c68b5e46f4eccfc82af798415a # v2
         with:
           tool: cross
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
