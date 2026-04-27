@@ -102,4 +102,7 @@ jobs:
         # we skip a separate `cargo build` step. `--locked` keeps the
         # committed Cargo.lock authoritative — same constraint as the
         # release workflow — so a stale lockfile cannot pass CI.
-        run: cargo test --locked --verbose --all-targets
+        # `--all-features` matches the surface that fmt/clippy/deny
+        # exercise, so feature-gated code cannot pass lint while
+        # remaining untested.
+        run: cargo test --locked --verbose --all-targets --all-features
