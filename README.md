@@ -20,7 +20,7 @@ classic `sl` command.
 ## Status
 
 🚧 Early scaffolding. No PTY behavior is implemented yet — the
-binaries currently print a "implementation pending" notice. See
+binaries currently print an "implementation pending" notice. See
 [the project plan](#roadmap) for what comes next.
 
 ## Why
@@ -43,7 +43,8 @@ cargo install --git https://github.com/kurone-kito/qorrection
 
 Planned distribution channels:
 
-- GitHub Releases (single binary for Linux, macOS, Windows)
+- GitHub Releases (self-contained `qorrection` and `q9` binaries
+  for Linux, macOS, Windows)
 - `cargo install qorrection` (crates.io)
 - Homebrew tap (future)
 
@@ -54,13 +55,13 @@ Planned distribution channels:
 # refer to the same binary behavior.
 q9 copilot
 q9 claude
-q9 vim   # ironically still works — qorrection only intercepts when
-         # the wrapped program does not already own those keystrokes
 ```
 
 Inside the wrapped session, typing `:q`, `:wq`, or `:q!` plays the
-ambulance animation. The wrapped program itself receives nothing
-for those captured keystrokes.
+ambulance animation. The exact handoff to the wrapped program — for
+example, whether and how to leave Vim alone when it legitimately
+owns those keystrokes — is part of the open design work tracked in
+the [roadmap](#roadmap), not a guarantee of the current scaffold.
 
 ### Options (planned)
 
