@@ -1,9 +1,12 @@
 concurrency:
   cancel-in-progress: true
-  # Collapse push and pull_request runs for the same commit so
-  # intra-repo PRs do not duplicate work. `github.event.pull_request.number`
-  # exists only for PR events; `github.ref` is used for push events.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Dedupe push and pull_request runs for the same head ref. For
+  # same-repo PRs, the `push` event uses `github.ref`
+  # (refs/heads/<branch>) while the `pull_request` event uses
+  # `github.event.pull_request.number`, so keying on either alone
+  # leaves both runs alive. Key on the head repo + head branch (or
+  # ref, for push events on `main` etc.) so duplicate runs collapse.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref }}
 name: CI
 on:
   push:
