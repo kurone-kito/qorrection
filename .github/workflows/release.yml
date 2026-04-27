@@ -41,6 +41,14 @@ jobs:
             # Older `cargo pkgid` style: strip up to last `#`.
             cargo_version="${pkgid##*#}"
           fi
+          # If neither separator was present, the parser fell through
+          # and `cargo_version` is still the entire pkgid. Bail out
+          # with a clear diagnostic instead of comparing the tag to a
+          # large opaque pkgid string further down.
+          if [ "${cargo_version}" = "${pkgid}" ]; then
+            echo "::error::Could not parse cargo pkgid output (no '@' or '#' separator): ${pkgid}" >&2
+            exit 1
+          fi
           echo "tag=${tag}"
           echo "cargo=${cargo_version}"
           if [ "${tag}" != "${cargo_version}" ]; then
