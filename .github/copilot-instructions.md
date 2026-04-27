@@ -286,8 +286,9 @@ opening the PR** and iterate until no rational findings remain.
 **Procedure:**
 
 1. After implementation passes local checks (`cargo fmt --check`,
-   `cargo clippy -D warnings`, `cargo test`), invoke the
-   rubber-duck agent with the relevant diff and context.
+   `cargo clippy --all-targets -- -D warnings`, `cargo test`),
+   invoke the rubber-duck agent with the relevant diff and
+   context.
 2. **Filter the findings** — keep those that prevent bugs,
    correctness issues, race conditions, security holes, or
    clearly improve testability. Discard style nits, speculative
