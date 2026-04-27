@@ -4,6 +4,13 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+concurrency:
+  # Tag pushes and manual dispatches must not race on the same
+  # artifacts and the GitHub Release. We do NOT cancel in-flight
+  # runs because canceling mid-publish could leave a partial
+  # release.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
