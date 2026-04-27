@@ -116,11 +116,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # `file | grep dynamically linked` misclassifies Rust musl
+          # static-pie binaries (default since rustc 1.71): they have
+          # a PT_INTERP entry pointing at /lib/ld-musl-… and `file`
+          # therefore reports them as dynamically linked even though
+          # they have no NEEDED entries. `readelf -d` is the
+          # authoritative test — fail if any DT_NEEDED entry exists.
           for bin in qorrection q9; do
             path="target/${{ matrix.target }}/release/${bin}"
             file "${path}"
-            if file "${path}" | grep -q "dynamically linked"; then
-              echo "::error::${path} is dynamically linked" >&2
+            if readelf -d "${path}" | grep -E "\\(NEEDED\\)" >/dev/null; then
+              echo "::error::${path} has DT_NEEDED entries (not statically linked)" >&2
+              readelf -d "${path}" | grep -E "\\(NEEDED\\)" >&2 || true
               exit 1
             fi
           done
