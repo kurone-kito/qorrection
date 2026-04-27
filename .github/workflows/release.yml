@@ -178,6 +178,40 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Verify all expected artifacts are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `download-artifact` with `merge-multiple: true` flattens
+          # everything into `dist/`, and `files: dist/*` then
+          # attaches whatever is there. Without an explicit
+          # completeness check, a partial build (one matrix runner
+          # failed earlier with `fail-fast: false`) could publish an
+          # incomplete release. Assert that every expected target
+          # archive exists before invoking action-gh-release.
+          missing=0
+          for spec in \
+            "x86_64-unknown-linux-musl:tar.gz" \
+            "aarch64-unknown-linux-musl:tar.gz" \
+            "x86_64-apple-darwin:tar.gz" \
+            "aarch64-apple-darwin:tar.gz" \
+            "x86_64-pc-windows-msvc:zip"; do
+            target="${spec%:*}"
+            ext="${spec##*:}"
+            shopt -s nullglob
+            matches=(dist/qorrection-*-"${target}.${ext}")
+            shopt -u nullglob
+            if [ "${#matches[@]}" -eq 0 ]; then
+              echo "::error::Missing artifact for ${target} (*.${ext})" >&2
+              missing=1
+            else
+              echo "Found ${matches[*]}"
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            echo "::error::Refusing to publish: at least one matrix artifact is missing." >&2
+            exit 1
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
