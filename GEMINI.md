@@ -10,7 +10,7 @@ The implementation language is **Rust**, distributed as a single
 self-contained binary for Linux, macOS, and Windows.
 
 The repository is currently optimized for GitHub Copilot tooling,
-but `CLAUDE.md` exists so Claude Code can still receive the
+but `GEMINI.md` exists so Gemini CLI can still receive the
 minimum project rules immediately, without depending on a
 redirect.
 
@@ -97,5 +97,5 @@ merged. See the full rules in
 The full, Copilot-first project guidance lives in
 [.github/copilot-instructions.md](.github/copilot-instructions.md).
 When that file uses Copilot-specific workflow names, apply the intent
-in Claude Code using its own interaction model rather than following
+in Gemini CLI using its own interaction model rather than following
 the product terms literally.

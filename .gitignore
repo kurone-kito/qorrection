@@ -118,6 +118,15 @@ $RECYCLE.BIN/
 
 ### THE PROJECT SPECIFIES #################################################
 
+### Rust ###
+# Cargo build directory
+/target/
+
+# Backup files emitted by `rustfmt` when run with the legacy
+# `--backup` flag (or older write modes) — `cargo fmt --check`
+# itself is read-only and never writes these.
+**/*.rs.bk
+
 ### AI Agents ###
 # Claude Code local config
 .claude/

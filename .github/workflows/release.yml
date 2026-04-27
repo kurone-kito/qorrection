@@ -1,0 +1,226 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+concurrency:
+  # Tag pushes and manual dispatches must not race on the same
+  # artifacts and the GitHub Release. We do NOT cancel in-flight
+  # runs because canceling mid-publish could leave a partial
+  # release.
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  verify-tag:
+    name: Verify tag matches Cargo.toml version
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        # Pass the channel explicitly because newer rustup releases
+        # require at least one toolchain spec for `rustup toolchain
+        # install`. The channel here matches rust-toolchain.toml.
+        run: rustup toolchain install stable --profile minimal
+      - name: Compare Cargo.toml version with tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          # `cargo pkgid` prints `…#qorrection@<version>` (or the
+          # legacy `…#<version>` form on older Cargo). Strip up to
+          # and including the last `@` to get just the version. We
+          # use the package id rather than `cargo metadata` because
+          # it has no JSON parsing dependency.
+          pkgid="$(cargo pkgid -p qorrection)"
+          cargo_version="${pkgid##*@}"
+          if [ "${cargo_version}" = "${pkgid}" ]; then
+            # Older `cargo pkgid` style: strip up to last `#`.
+            cargo_version="${pkgid##*#}"
+          fi
+          # If neither separator was present, the parser fell through
+          # and `cargo_version` is still the entire pkgid. Bail out
+          # with a clear diagnostic instead of comparing the tag to a
+          # large opaque pkgid string further down.
+          if [ "${cargo_version}" = "${pkgid}" ]; then
+            echo "::error::Could not parse cargo pkgid output (no '@' or '#' separator): ${pkgid}" >&2
+            exit 1
+          fi
+          echo "tag=${tag}"
+          echo "cargo=${cargo_version}"
+          if [ "${tag}" != "${cargo_version}" ]; then
+            echo "::error::Tag v${tag} does not match Cargo.toml version ${cargo_version}" >&2
+            exit 1
+          fi
+          if [ "${cargo_version}" = "0.0.0" ]; then
+            echo "::error::Refusing to publish placeholder version 0.0.0" >&2
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: [verify-tag]
+    # Allow manual dispatch (no tag) to still exercise the build matrix.
+    if: |
+      always() &&
+      (needs.verify-tag.result == 'success' ||
+       needs.verify-tag.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux uses musl targets so the published binary is fully
+          # static and runs on any glibc/distribution baseline.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        # Pass the channel explicitly because newer rustup releases
+        # require at least one toolchain spec for `rustup toolchain
+        # install`. The channel matches rust-toolchain.toml.
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
+      - name: Install cross-build tooling (linux)
+        if: runner.os == 'Linux'
+        # `cross` runs the build inside the cross-rs Docker image
+        # for the requested target, which already ships a working
+        # musl cross compiler and linker for both x86_64 and
+        # aarch64 — no host apt packages required.
+        uses: taiki-e/install-action@cf525cb33f51aca27cd6fa02034117ab963ff9f1 # v2
+        with:
+          tool: cross
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build release binaries
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cross build --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
+      - name: Verify Linux binaries are statically linked
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `file | grep dynamically linked` misclassifies Rust musl
+          # static-pie binaries (default since rustc 1.71): they have
+          # a PT_INTERP entry pointing at /lib/ld-musl-… and `file`
+          # therefore reports them as dynamically linked even though
+          # they have no NEEDED entries. `readelf -d` is the
+          # authoritative test — fail if any DT_NEEDED entry exists.
+          for bin in qorrection q9; do
+            path="target/${{ matrix.target }}/release/${bin}"
+            file "${path}"
+            if readelf -d "${path}" | grep -E "\\(NEEDED\\)" >/dev/null; then
+              echo "::error::${path} has DT_NEEDED entries (not statically linked)" >&2
+              readelf -d "${path}" | grep -E "\\(NEEDED\\)" >&2 || true
+              exit 1
+            fi
+          done
+      - name: Stage artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `GITHUB_REF_NAME` for tag pushes is the tag itself
+          # (e.g. `v0.1.0`), but for `workflow_dispatch` runs it is
+          # the branch name and may contain `/` (e.g. `feature/foo`).
+          # A `/` in the stage name would create a nested directory,
+          # break the upload glob (`dist/qorrection-*.${archive}`),
+          # and fail the job with `if-no-files-found: error`.
+          # Replace any path separators with `-` so the staged name
+          # is always a single safe filename component.
+          safe_ref="${GITHUB_REF_NAME//\//-}"
+          stage="qorrection-${safe_ref}-${{ matrix.target }}"
+          mkdir -p "dist/${stage}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/qorrection.exe" "dist/${stage}/"
+            cp "target/${{ matrix.target }}/release/q9.exe" "dist/${stage}/"
+          else
+            cp "target/${{ matrix.target }}/release/qorrection" "dist/${stage}/"
+            cp "target/${{ matrix.target }}/release/q9" "dist/${stage}/"
+          fi
+          cp README.md LICENSE-MIT LICENSE-APACHE "dist/${stage}/"
+          cd dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a "${stage}.zip" "${stage}"
+          else
+            tar -czf "${stage}.tar.gz" "${stage}"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qorrection-${{ matrix.target }}
+          path: dist/qorrection-*.${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Verify all expected artifacts are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `download-artifact` with `merge-multiple: true` flattens
+          # everything into `dist/`, and `files: dist/*` then
+          # attaches whatever is there. Without an explicit
+          # completeness check, a partial build (one matrix runner
+          # failed earlier with `fail-fast: false`) could publish an
+          # incomplete release. Assert that every expected target
+          # archive exists before invoking action-gh-release.
+          missing=0
+          for spec in \
+            "x86_64-unknown-linux-musl:tar.gz" \
+            "aarch64-unknown-linux-musl:tar.gz" \
+            "x86_64-apple-darwin:tar.gz" \
+            "aarch64-apple-darwin:tar.gz" \
+            "x86_64-pc-windows-msvc:zip"; do
+            target="${spec%:*}"
+            ext="${spec##*:}"
+            shopt -s nullglob
+            matches=(dist/qorrection-*-"${target}.${ext}")
+            shopt -u nullglob
+            if [ "${#matches[@]}" -eq 0 ]; then
+              echo "::error::Missing artifact for ${target} (*.${ext})" >&2
+              missing=1
+            else
+              echo "Found ${matches[*]}"
+            fi
+          done
+          if [ "${missing}" -ne 0 ]; then
+            echo "::error::Refusing to publish: at least one matrix artifact is missing." >&2
+            exit 1
+          fi
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: dist/*
+          generate_release_notes: true

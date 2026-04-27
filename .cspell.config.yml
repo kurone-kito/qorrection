@@ -7,6 +7,7 @@ dictionaries:
   - git
   - markdown
   - misc
+  - rust
   - shellscript
   - softwareTerms
 enableGlobDot: true
@@ -18,10 +19,19 @@ ignorePaths:
   - .git
   - .github/CODE_OF_CONDUCT.*
   - .vscode/extensions.json
+ignoreRegExpList:
+  - kuroné?
 language: en,ja
 useGitignore: true
 version: '0.2'
 words:
+  - Embark
+  - insta
   - kito
-  - kuron
-  - kuroné
+  - dedupe
+  - kyuukyuu
+  - pkgid
+  - qorrection
+  - readelf
+  - rexpect
+  - Swatinem
