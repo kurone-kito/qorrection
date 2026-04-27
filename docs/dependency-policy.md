@@ -42,8 +42,8 @@ this set before introducing alternatives.
 ## License & advisory policy
 
 - Allowed licenses are encoded in [`deny.toml`](../deny.toml).
-- Run `cargo deny check` locally before opening a PR; CI must
-  enforce the same check (planned).
+- CI runs `cargo deny check` on every push and pull request; run
+  the same command locally before opening a PR.
 - Any allow-list change requires a comment in `deny.toml`
   explaining why the entry is acceptable for a dual-licensed
   MIT/Apache-2.0 project.
