@@ -54,17 +54,13 @@ Planned distribution channels:
 # refer to the same binary behavior.
 q9 copilot
 q9 claude
+q9 vim   # ironically still works — qorrection only intercepts when
+         # the wrapped program does not already own those keystrokes
 ```
 
 Inside the wrapped session, typing `:q`, `:wq`, or `:q!` plays the
 ambulance animation. The wrapped program itself receives nothing
 for those captured keystrokes.
-
-> **Heads up:** because qorrection unconditionally swallows the
-> trigger sequences, do not wrap programs where `:q` is itself a
-> meaningful command (notably Vim, less, man, and similar
-> pager / modal editors). A configurable per-program bypass is on
-> the roadmap; until then, run those programs without `q9`.
 
 ### Options (planned)
 
