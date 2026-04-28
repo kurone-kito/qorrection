@@ -16,6 +16,7 @@ pub mod error;
 #[cfg(unix)]
 pub mod signals;
 pub mod term;
+pub mod trigger;
 pub mod usage;
 
 pub use error::{Error, Result};
