@@ -12,4 +12,5 @@
 //! and unit-testable without a PTY. Phase E plugs the modules
 //! into the real input pump and output arbiter.
 
+pub mod altscreen;
 pub mod paste;
