@@ -34,6 +34,13 @@ path = "src/bin/q9.rs"
 thiserror = "1"
 
 [dev-dependencies]
+# Pin assert_cmd to the last 2.x compatible with our declared MSRV
+# (rust-version = "1.78"). The 2.2.x line bumped to edition 2024
+# and rust-version 1.85, which would fail the `cargo +MSRV check
+# --locked` step in CI. Bump this in lockstep with any future MSRV
+# bump (its own atomic commit per repo policy).
+assert_cmd = "=2.0.17"
+predicates = "3"
 
 [profile.release]
 lto = "thin"

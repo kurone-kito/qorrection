@@ -32,6 +32,19 @@ command" rule.
 Justify any new dependency in the commit body. Prefer extending
 this set before introducing alternatives.
 
+## Test-only dependencies
+
+`dev-dependencies` follow the same rule (added in lockstep with
+the first commit that uses them). The agreed test set:
+
+| Crate | Purpose | Status |
+| ----- | ------- | ------ |
+| `assert_cmd` | Process-boundary assertions for `tests/*.rs` integration tests | added |
+| `predicates` | Companion matcher library used by `assert_cmd` for stdout/stderr/exit-code assertions | added |
+| `insta` | ANSI byte-stream snapshot tests for animations and the usage screen | planned (Phase C) |
+| `rexpect` (Unix only) | Real-PTY end-to-end tests, gated to `[target.'cfg(unix)'.dev-dependencies]` so Windows builds don't pull it transitively | planned (Phase E) |
+| `tempfile` | Scratch directories for tests that need a real filesystem | planned (Phase E) |
+
 ## Versioning
 
 - **`Cargo.toml`** pins major versions (e.g., `thiserror = "1"`).
