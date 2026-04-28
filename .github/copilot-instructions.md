@@ -230,7 +230,7 @@ feat: add auth system and refactor database layer and update docs
   once the project grows beyond placeholder code.
 - **Dependencies**: justify each new dependency in the commit
   body. Prefer the agreed core set (`portable-pty`, `crossterm`,
-  `clap`, `anyhow`, `thiserror`, `tracing`) before introducing
+  `anyhow`, `thiserror`, `tracing`) before introducing
   alternatives.
 - **`unsafe`**: forbidden by default. Any introduction requires
   a SAFETY comment and a rubber-duck review pass.
