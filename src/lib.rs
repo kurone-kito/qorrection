@@ -10,6 +10,7 @@
 //! The PTY wrapper, trigger detection, and animation renderer
 //! will be added in subsequent phases per the project plan.
 
+pub mod anim;
 pub mod cli;
 pub mod error;
 #[cfg(unix)]
