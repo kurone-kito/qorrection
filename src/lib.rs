@@ -10,14 +10,25 @@
 //! The PTY wrapper, trigger detection, and animation renderer
 //! will be added in subsequent phases per the project plan.
 
+pub mod error;
+
+pub use error::{Error, Result};
+
 use std::process::ExitCode;
 
 /// Entry point for the shipped binaries.
 ///
-/// Reads `std::env::args_os()` and dispatches to [`run`]. Returns
-/// the [`ExitCode`] the process should exit with.
+/// Reads `std::env::args_os()` and dispatches to [`run`]. Maps
+/// any returned [`Error`] to its recommended exit code and prints
+/// a one-line diagnostic to stderr.
 pub fn run_from_env() -> ExitCode {
-    run(std::env::args_os().skip(1).collect())
+    match run(std::env::args_os().skip(1).collect()) {
+        Ok(code) => code,
+        Err(err) => {
+            eprintln!("qorrection: {err}");
+            ExitCode::from(err.exit_code())
+        }
+    }
 }
 
 /// Library-level entry point.
@@ -26,7 +37,7 @@ pub fn run_from_env() -> ExitCode {
 /// returns the resulting [`ExitCode`]. Until the dispatcher lands
 /// in a subsequent commit this is a placeholder that mirrors the
 /// previous binary behavior.
-pub fn run(_args: Vec<std::ffi::OsString>) -> ExitCode {
+pub fn run(_args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
     eprintln!("qorrection: implementation pending");
-    ExitCode::from(2)
+    Ok(ExitCode::from(2))
 }
