@@ -131,6 +131,15 @@ impl SignalGuard {
             };
             (pair.0, pair.1, true)
         };
+        // The cached read end may still hold wake bytes written by
+        // a previous guard's handler between its last `drain` and
+        // its `Drop` (the FDs survive across reinstalls). Discard
+        // them now so the next caller's first `drain` does not
+        // surface a `Resize` or `Shutdown` event from a vanished
+        // session. Done before `WRITE_FD` is republished so any
+        // signal that arrives mid-install is racing only against
+        // the new guard, not a stale one.
+        drain_stale_wake_bytes(read_fd);
         WRITE_FD.store(write_fd, Ordering::Release);
 
         let old_winch = match install_handler(libc::SIGWINCH) {
@@ -386,6 +395,38 @@ fn cleanup_pipe(read_fd: RawFd, write_fd: RawFd) {
     }
 }
 
+/// Best-effort drain of any buffered wake bytes on the cached
+/// read end. Used at install time to clear leftovers from a
+/// previous guard's lifetime; the pipe is non-blocking so
+/// `EAGAIN` is the normal exit. Errors are intentionally
+/// swallowed: nothing the caller can do about a stale read,
+/// and a partially drained pipe is still strictly safer than
+/// none.
+fn drain_stale_wake_bytes(read_fd: RawFd) {
+    let mut buf = [0u8; 64];
+    loop {
+        // SAFETY: read into a stack buffer of known length on a
+        // non-blocking FD we opened ourselves.
+        let n = unsafe {
+            libc::read(
+                read_fd,
+                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.len(),
+            )
+        };
+        if n > 0 {
+            #[allow(clippy::cast_sign_loss)]
+            let n = n as usize;
+            if n < buf.len() {
+                return;
+            }
+            // Loop again -- there may be more.
+        } else {
+            return;
+        }
+    }
+}
+
 extern "C" fn handler(sig: libc::c_int) {
     let fd = WRITE_FD.load(Ordering::Acquire);
     if fd < 0 {
@@ -489,5 +530,33 @@ mod tests {
             assert_eq!(g.read_fd, first_r, "read_fd must be reused");
             assert_eq!(g.write_fd, first_w, "write_fd must be reused");
         }
+    }
+
+    #[test]
+    fn reinstall_drops_stale_wake_bytes() {
+        // A signal delivered between drop and reinstall (or a
+        // tester writing to the cached pipe directly) leaves
+        // bytes in the read end. The cached FD pair survives
+        // across guards, so the next install must drain those
+        // leftovers; otherwise the new session's first `drain`
+        // would surface a Resize/Shutdown that no longer maps
+        // to anything in this lifetime.
+        let _serial = SERIAL.lock().unwrap();
+        let cached_w = {
+            let g = SignalGuard::install().expect("first install");
+            g.write_fd
+        };
+        // Forge a stale wake byte on the cached write end after
+        // the previous guard is gone.
+        let byte = EVT_TERM;
+        // SAFETY: write a single byte to a non-blocking FD we
+        // own; ignore the result -- we only care that *something*
+        // is queued for the next install to discard.
+        let _ = unsafe {
+            libc::write(cached_w, &byte as *const u8 as *const libc::c_void, 1)
+        };
+        let g = SignalGuard::install().expect("reinstall");
+        let events = g.drain().expect("drain");
+        assert!(events.is_empty(), "stale wake bytes leaked: {events:?}");
     }
 }
