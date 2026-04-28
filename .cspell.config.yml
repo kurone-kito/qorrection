@@ -1,13 +1,17 @@
 allowCompoundWords: true
 dictionaries:
   - cpp
+  - cpp-compound-words
+  - cpp-legacy
   - en_US
   - en-gb
   - fullstack
   - git
   - markdown
   - misc
+  - npm
   - rust
+  - rust-crates
   - shellscript
   - softwareTerms
 enableGlobDot: true
@@ -19,19 +23,27 @@ ignorePaths:
   - .git
   - .github/CODE_OF_CONDUCT.*
   - .vscode/extensions.json
+  - Cargo.lock
+  - target/**
 ignoreRegExpList:
   - kuroné?
 language: en,ja
 useGitignore: true
 version: '0.2'
 words:
-  - Embark
-  - insta
+  - aichat
+  - decckm
+  - embark
+  - greppable
+  - hsomething
   - kito
-  - dedupe
+  - jvim
   - kyuukyuu
-  - pkgid
+  - lossily
+  - ollama
+  - qjunk
   - qorrection
-  - readelf
+  - qwen
   - rexpect
-  - Swatinem
+  - swatinem
+  - toctou
