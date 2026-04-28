@@ -63,9 +63,12 @@ static WRITE_FD: AtomicI32 = AtomicI32::new(-1);
 
 /// RAII handle for the installed SIGWINCH/SIGTERM handlers.
 ///
-/// Drop restores the previous handlers and closes both ends of
-/// the self-pipe. Holding the guard alive (typically as a local
-/// in `pty::run_session`) keeps the wake mechanism armed.
+/// Drop restores the previous handlers and intentionally **leaks**
+/// both ends of the self-pipe (see the comment on `Drop` for why
+/// closing them is async-signal-unsafe). Holding the guard alive
+/// (typically as a local in `pty::run_session`) keeps the wake
+/// mechanism armed; dropping it disarms further wake-ups but does
+/// not free the two file descriptors.
 #[derive(Debug)]
 pub struct SignalGuard {
     read_fd: RawFd,
@@ -118,17 +121,24 @@ impl SignalGuard {
         let old_term = match install_handler(libc::SIGTERM) {
             Ok(prev) => prev,
             Err(e) => {
-                // Roll SIGWINCH back before bailing. Block
-                // SIGWINCH first so a signal in flight cannot
-                // observe the about-to-be-closed write fd.
+                // SIGWINCH is already installed at this point and a
+                // handler invocation may be in flight on another
+                // thread, holding our `WRITE_FD` value. Closing the
+                // pipe here would race with that write -- exactly
+                // the TOCTOU we avoid in `Drop`. Block SIGWINCH on
+                // this thread to silence further deliveries here,
+                // restore the previous SIGWINCH handler so no new
+                // invocations enter our code, then zero `WRITE_FD`
+                // and leak the pipe FDs. The leak is bounded
+                // because `INSTALLED` enforces single-instance.
                 let _mask = BlockedSignals::block(&[libc::SIGWINCH]);
-                WRITE_FD.store(-1, Ordering::Release);
                 // SAFETY: `old_winch` is the value libc handed us
                 // from the matching sigaction call above.
                 unsafe {
                     libc::sigaction(libc::SIGWINCH, &old_winch, std::ptr::null_mut());
                 }
-                cleanup_pipe(read_fd, write_fd);
+                WRITE_FD.store(-1, Ordering::Release);
+                let _ = (read_fd, write_fd); // intentionally leaked
                 INSTALLED.store(false, Ordering::Release);
                 return Err(e.into());
             }
@@ -168,6 +178,8 @@ impl SignalGuard {
                 )
             };
             if n > 0 {
+                // libc::read returns ssize_t; the n > 0 branch above
+                // proves the value fits in usize without truncation.
                 #[allow(clippy::cast_sign_loss)]
                 let n = n as usize;
                 events.extend(buf[..n].iter().filter_map(|b| decode(*b)));
@@ -192,21 +204,36 @@ impl SignalGuard {
 
 impl Drop for SignalGuard {
     fn drop(&mut self) {
-        // Block both signals on this thread so an in-flight
-        // handler cannot observe the soon-to-be-closed write fd.
-        // POSIX automatically blocks the signal currently being
-        // handled, but a handler running on another thread (or a
-        // signal pending after restoration) could still race; the
-        // mask here closes that window.
+        // Closing the self-pipe here would race with any signal
+        // handler invocation already in flight on another thread:
+        // it could have read the still-valid `WRITE_FD` value, then
+        // be preempted, then resume after we close the FD and try
+        // to write to a closed-or-recycled descriptor. There is no
+        // portable async-signal-safe way to wait for in-flight
+        // handlers to finish, so we close the window the only way
+        // POSIX allows: restore the previous handlers FIRST (no
+        // new invocations can enter our code after `sigaction`
+        // returns), zero `WRITE_FD` so the still-running handler
+        // skips its write on the next load, and then deliberately
+        // **leak** both ends of the self-pipe. Any handler still
+        // mid-flight just writes to a still-open fd -- harmless.
+        // The leak is bounded to two FDs per process because
+        // `INSTALLED` enforces single-instance installation.
+        //
+        // The thread-local mask still helps: it silences any
+        // signal that arrives at this thread while we re-install
+        // the previous handlers, which keeps the rollback path
+        // out of any signal disposition surprise.
         let _mask = BlockedSignals::block(&[libc::SIGWINCH, libc::SIGTERM]);
-        WRITE_FD.store(-1, Ordering::Release);
         // SAFETY: `old_winch`/`old_term` were obtained from the
         // matching sigaction calls in `install`.
         unsafe {
             libc::sigaction(libc::SIGWINCH, &self.old_winch, std::ptr::null_mut());
             libc::sigaction(libc::SIGTERM, &self.old_term, std::ptr::null_mut());
         }
-        cleanup_pipe(self.read_fd, self.write_fd);
+        WRITE_FD.store(-1, Ordering::Release);
+        // Intentionally leaked. See comment above.
+        let _ = (self.read_fd, self.write_fd);
         INSTALLED.store(false, Ordering::Release);
     }
 }
