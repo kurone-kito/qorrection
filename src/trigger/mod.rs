@@ -13,4 +13,5 @@
 //! into the real input pump and output arbiter.
 
 pub mod altscreen;
+pub mod parser;
 pub mod paste;
