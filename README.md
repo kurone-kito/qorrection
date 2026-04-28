@@ -9,19 +9,23 @@
 > *other* CLI tools and answers them with a passing ambulance —
 > because experienced engineers reflexively type `:q` everywhere.
 
-`qorrection` (alias **`q9`** — *kyuukyuu*, the ambulance) wraps an
-arbitrary interactive command in a pseudo-terminal, watches what
-you type, and intercepts Vim-style quit sequences (`:q`, `:wq`,
-`:q!`). Instead of being silently ignored by the wrapped program,
-those keystrokes trigger a small ASCII-art ambulance animation
-sweeping across the screen, in the same spirit as the
-classic `sl` command.
+`qorrection` (alias **`q9`** — *kyuukyuu*, the ambulance) is
+designed to wrap an arbitrary interactive command in a
+pseudo-terminal, watch what you type, and intercept Vim-style
+quit sequences (`:q`, `:wq`, `:q!`). Instead of being silently
+ignored by the wrapped program, those keystrokes will trigger a
+small ASCII-art ambulance animation sweeping across the screen,
+in the same spirit as the classic `sl` command. The wrap itself
+is not yet implemented (see [Status](#status)).
 
 ## Status
 
-🚧 Early scaffolding. No PTY behavior is implemented yet — the
-binaries currently print an "implementation pending" notice. See
-[the project plan](#roadmap) for what comes next.
+🚧 In progress. The CLI surface, usage screen, and version
+output are wired and tested end-to-end, but the PTY wrap itself
+still prints `qorrection: PTY wrap pending` (exit code 2)
+instead of running the child. Trigger detection lives as a
+standalone, unit-tested parser module; it does not yet observe
+real input. See [the roadmap](#roadmap) for what comes next.
 
 ## Why
 
@@ -51,36 +55,65 @@ Planned distribution channels:
 ## Usage
 
 ```sh
-# Wrap any interactive command. Both `qorrection` and `q9`
-# refer to the same binary behavior.
+# Once PTY plumbing lands, both `qorrection` and `q9` will wrap
+# any interactive command. Today these invocations enter the
+# wrap stub and exit with `qorrection: PTY wrap pending`.
 q9 copilot
 q9 claude
 ```
 
-Inside the wrapped session, typing `:q`, `:wq`, or `:q!` plays the
-ambulance animation. The exact handoff to the wrapped program — for
-example, whether and how to leave Vim alone when it legitimately
-owns those keystrokes — is part of the open design work tracked in
-the [roadmap](#roadmap), not a guarantee of the current scaffold.
+Anything after the wrapped command's name is parsed as child
+arguments and will be forwarded verbatim — including flags — once
+PTY plumbing lands. With that in place, `q9 claude --help` will
+run `claude --help`; it will not show qorrection's own help.
 
-### Options (planned)
+### CLI surface
 
-| Flag                | Behavior                                                            |
-| ------------------- | ------------------------------------------------------------------- |
-| `--418`             | Reply with `418 I'm AI Agent` instead of the ambulance              |
-| `--no-animation`    | Suppress the animation, keep only the message                       |
-| `--triggers <list>` | Override the trigger list (default: `:q,:wq,:q!`)                   |
+The v0.1 surface is intentionally minimal:
 
-Exact flag names are subject to change before 1.0.
+| Invocation               | Behavior                          |
+| ------------------------ | --------------------------------- |
+| `q9` (no args)           | Show the usage screen             |
+| `q9 -h` / `q9 --help`    | Show the usage screen             |
+| `q9 -V` / `q9 --version` | Print `qorrection X.Y.Z` and exit |
+| `q9 <cmd> [args...]`     | Enter the wrap path (see below)   |
+
+The wrap path is the only entry that is not yet fully wired: it
+currently prints `qorrection: PTY wrap pending` on stderr and
+exits with code 2 until the PTY plumbing milestone lands.
+
+There are no other flags. Any unrecognized leading `-…` token
+(including the bare `--` separator) is rejected on stderr as
+`<prog>: unknown option: "<token>"` with exit code 2, where
+`<prog>` reflects how the binary was invoked (`q9` or
+`qorrection`). Trigger behavior, the 418 gag, and the wrapped
+program allowlist are all built in — none of them are
+configurable in v0.1.
+
+### Triggers (locked policy)
+
+Once PTY plumbing lands, trigger interception will be active
+only when the wrapped command is one of the known AI coding
+agents: `copilot`, `codex`, `claude`, `aichat`, `gemini`,
+`qwen`, `ollama`. Matching is by command basename,
+case-insensitive, with `.exe` / `.cmd` / `.bat` stripped — so
+`/usr/bin/Claude` and `claude.exe` both arm. For any other
+command the wrapper will pass keystrokes through untouched, so
+editors such as Vim keep owning `:q`.
+
+| Trigger | Gag                                                          |
+| ------- | ------------------------------------------------------------ |
+| `:q`    | Standard ambulance with a `FI-FO-FI-FO` siren trail          |
+| `:wq`   | Larger ambulance carrying `418 I'm an AI agent`              |
+| `:q!`   | 9-car parade (we really wanted `9! = 362880`, but settled)   |
 
 ## Roadmap
 
 1. PTY plumbing with `portable-pty` (Linux, macOS, Windows ConPTY)
-2. Trigger detection for `:q`, `:wq`, `:q!`
+2. Trigger detection for `:q`, `:wq`, `:q!` (parser already landed;
+   wiring it to the live PTY input stream comes with PTY plumbing)
 3. Ambulance animation renderer (`crossterm`)
-4. `--418` easter egg
-5. Configurable trigger list
-6. Release pipeline (GitHub Releases + crates.io)
+4. Release pipeline (GitHub Releases + crates.io)
 
 ## Contributing
 
