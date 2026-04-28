@@ -66,9 +66,28 @@ impl PasteTracker {
         self.in_paste
     }
 
-    /// Consume one byte. Returns the post-byte paste state for
-    /// convenience so callers can write
-    /// `if !tracker.feed(b) { parser.feed(b); }`.
+    /// Consume one byte and return the post-byte paste state.
+    ///
+    /// **Pump contract:** the simple
+    /// `if !tracker.feed(b) { parser.feed(b); }` shortcut is
+    /// wrong because it lets the closing `~` of `\x1b[201~` fall
+    /// through to the parser and skips the required disarm-boundary
+    /// reset. The canonical idiom is "bypass when EITHER the pre-
+    /// or post-byte state was active, and reset the parser on every
+    /// transition", e.g.:
+    ///
+    /// ```text
+    /// let was_in_paste = tracker.in_paste();
+    /// let now_in_paste = tracker.feed(b);
+    /// if was_in_paste != now_in_paste {
+    ///     parser.reset();
+    /// }
+    /// if !was_in_paste && !now_in_paste {
+    ///     parser.feed(b);
+    /// }
+    /// ```
+    ///
+    /// See `tests/trigger_grammar.rs` for a worked reference pump.
     pub fn feed(&mut self, b: u8) -> bool {
         self.state = match (self.state, b) {
             // ESC always restarts the recognizer, even mid-paste,
