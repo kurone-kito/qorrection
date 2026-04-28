@@ -12,6 +12,7 @@
 
 pub mod cli;
 pub mod error;
+pub mod term;
 
 pub use error::{Error, Result};
 
