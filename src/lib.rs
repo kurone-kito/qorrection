@@ -27,15 +27,37 @@ use std::process::ExitCode;
 ///
 /// Reads `std::env::args_os()` and dispatches to [`run`]. Maps
 /// any returned [`Error`] to its recommended exit code and prints
-/// a one-line diagnostic to stderr.
+/// a one-line diagnostic to stderr, prefixed with the basename
+/// of `argv[0]` so error output reflects how the user actually
+/// invoked the binary (e.g. `q9: unknown option ...` vs
+/// `qorrection: unknown option ...`). Falls back to the crate
+/// name when `argv[0]` is missing or empty.
 pub fn run_from_env() -> ExitCode {
-    match run(std::env::args_os().skip(1).collect()) {
+    let mut args = std::env::args_os();
+    let argv0 = args.next();
+    let prog = program_name(argv0.as_deref());
+    match run(args.collect()) {
         Ok(code) => code,
         Err(err) => {
-            eprintln!("qorrection: {err}");
+            eprintln!("{prog}: {err}");
             ExitCode::from(err.exit_code())
         }
     }
+}
+
+/// Derive the diagnostic prefix from `argv[0]`.
+///
+/// Returns the file-name component of `argv[0]` (lossily
+/// converted, since program names are virtually always ASCII /
+/// UTF-8 in practice), or the literal `"qorrection"` when
+/// `argv[0]` is missing, empty, or has no file-name component.
+fn program_name(argv0: Option<&std::ffi::OsStr>) -> String {
+    argv0
+        .map(std::path::Path::new)
+        .and_then(std::path::Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "qorrection".to_string())
 }
 
 /// Library-level entry point.
@@ -65,5 +87,34 @@ pub fn run(args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
             eprintln!("qorrection: PTY wrap pending");
             Ok(ExitCode::from(2))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::program_name;
+    use std::ffi::OsString;
+
+    #[test]
+    fn program_name_basenames_full_path() {
+        let p = OsString::from("/usr/local/bin/q9");
+        assert_eq!(program_name(Some(p.as_os_str())), "q9");
+    }
+
+    #[test]
+    fn program_name_passes_bare_name_through() {
+        let p = OsString::from("qorrection");
+        assert_eq!(program_name(Some(p.as_os_str())), "qorrection");
+    }
+
+    #[test]
+    fn program_name_falls_back_when_argv0_missing() {
+        assert_eq!(program_name(None), "qorrection");
+    }
+
+    #[test]
+    fn program_name_falls_back_when_argv0_empty() {
+        let p = OsString::from("");
+        assert_eq!(program_name(Some(p.as_os_str())), "qorrection");
     }
 }
