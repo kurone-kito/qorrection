@@ -10,6 +10,7 @@
 //! The PTY wrapper, trigger detection, and animation renderer
 //! will be added in subsequent phases per the project plan.
 
+pub mod cli;
 pub mod error;
 
 pub use error::{Error, Result};
@@ -33,11 +34,22 @@ pub fn run_from_env() -> ExitCode {
 
 /// Library-level entry point.
 ///
-/// Takes the parsed argv tail (i.e. without the program name) and
-/// returns the resulting [`ExitCode`]. Until the dispatcher lands
-/// in a subsequent commit this is a placeholder that mirrors the
-/// previous binary behavior.
-pub fn run(_args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
-    eprintln!("qorrection: implementation pending");
-    Ok(ExitCode::from(2))
+/// Parses the argv tail and dispatches to a stub branch. Real
+/// behavior (usage screen, version line, PTY wrap) is wired in
+/// the following commits per the implementation plan.
+pub fn run(args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
+    match cli::parse(args)? {
+        cli::Invocation::Usage => {
+            eprintln!("qorrection: usage screen pending");
+            Ok(ExitCode::from(2))
+        }
+        cli::Invocation::Version => {
+            eprintln!("qorrection: version output pending");
+            Ok(ExitCode::from(2))
+        }
+        cli::Invocation::Wrap { .. } => {
+            eprintln!("qorrection: PTY wrap pending");
+            Ok(ExitCode::from(2))
+        }
+    }
 }
