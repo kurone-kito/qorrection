@@ -12,6 +12,8 @@
 
 pub mod cli;
 pub mod error;
+#[cfg(unix)]
+pub mod signals;
 pub mod term;
 
 pub use error::{Error, Result};
