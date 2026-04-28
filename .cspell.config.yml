@@ -1,7 +1,3 @@
-dictionaryDefinitions:
-  - name: project-terms
-    path: .cspell/project-terms.txt
-    addWords: true
 allowCompoundWords: true
 dictionaries:
   - cpp
@@ -11,7 +7,6 @@ dictionaries:
   - git
   - markdown
   - misc
-  - project-terms
   - rust
   - shellscript
   - softwareTerms
@@ -29,3 +24,14 @@ ignoreRegExpList:
 language: en,ja
 useGitignore: true
 version: '0.2'
+words:
+  - Embark
+  - insta
+  - kito
+  - dedupe
+  - kyuukyuu
+  - pkgid
+  - qorrection
+  - readelf
+  - rexpect
+  - Swatinem
