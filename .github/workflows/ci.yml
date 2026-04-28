@@ -4,7 +4,7 @@ concurrency:
   # unique group keyed on run_id so they never cancel each other,
   # even under rapid merges or repeated manual dispatches. Tag
   # pushes are handled by `release.yml`, not here.
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: true
 name: CI
 on:
