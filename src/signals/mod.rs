@@ -398,7 +398,9 @@ fn cleanup_pipe(read_fd: RawFd, write_fd: RawFd) {
 /// Best-effort drain of any buffered wake bytes on the cached
 /// read end. Used at install time to clear leftovers from a
 /// previous guard's lifetime; the pipe is non-blocking so
-/// `EAGAIN` is the normal exit. Errors are intentionally
+/// `EAGAIN`/`WouldBlock` is the normal exit. `EINTR` is
+/// retried so an unrelated signal arriving mid-drain does not
+/// silently leave stale bytes behind. Other errors are
 /// swallowed: nothing the caller can do about a stale read,
 /// and a partially drained pipe is still strictly safer than
 /// none.
@@ -421,7 +423,13 @@ fn drain_stale_wake_bytes(read_fd: RawFd) {
                 return;
             }
             // Loop again -- there may be more.
+        } else if n == 0 {
+            return;
         } else {
+            let err = io::Error::last_os_error();
+            if err.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
             return;
         }
     }
