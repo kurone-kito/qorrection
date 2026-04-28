@@ -8,23 +8,33 @@ this file holds the operational details.
 ## Core dependencies
 
 The agreed core set, chosen for cross-platform robustness and
-ecosystem maturity:
+ecosystem maturity. Each entry is added in the same commit that
+first depends on it; `Cargo.toml`, this table, and any consuming
+code land together.
 
-| Crate | Purpose |
-| ----- | ------- |
-| `portable-pty` | Cross-platform PTY spawning (Unix PTY + Windows ConPTY) |
-| `crossterm` | ANSI / TUI primitives, cursor control, raw mode |
-| `clap` | CLI argument parsing (derive feature) |
-| `anyhow` | Error handling at the binary boundary |
-| `thiserror` | Error types at library module boundaries |
-| `tracing` + `tracing-subscriber` | Structured logging and diagnostics |
+| Crate | Purpose | Status |
+| ----- | ------- | ------ |
+| `thiserror` | Crate-level `Error` enum at the library boundary | added |
+| `portable-pty` | Cross-platform PTY spawning (Unix PTY + Windows ConPTY) | planned (Phase E) |
+| `crossterm` | ANSI / TUI primitives, cursor control, raw mode | planned (Phase B) |
+| `anyhow` | Carry `portable-pty`'s `anyhow::Error` results without losing the source chain at the crate `Error` boundary | planned (Phase E) |
+| `tracing` + `tracing-subscriber` | Optional structured diagnostics, gated by `QORRECTION_LOG` | planned (Phase E) |
+| `libc` | `sigaction`, `pipe2`, `tcsetattr` for the SIGWINCH/SIGTERM self-pipe and raw-mode guard | planned (Phase B) |
+
+`clap` is intentionally **not** in this set: the entire CLI
+surface is four cases (no args, `-h/--help`, `-V/--version`,
+`<cmd> [args...]`) and is hand-rolled in `src/cli/`. This keeps
+the dependency footprint small and avoids `clap`'s "smart"
+behavior around unknown flags / subcommands fighting our
+"first positional that doesn't start with `-` is the wrapped
+command" rule.
 
 Justify any new dependency in the commit body. Prefer extending
 this set before introducing alternatives.
 
 ## Versioning
 
-- **`Cargo.toml`** pins major versions (e.g., `clap = "4"`).
+- **`Cargo.toml`** pins major versions (e.g., `thiserror = "1"`).
 - **`Cargo.lock`** is committed (binary crate) and tracks the
   resolved minor / patch.
 - MSRV is declared via `package.rust-version` in `Cargo.toml`.

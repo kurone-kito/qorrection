@@ -31,6 +31,7 @@ name = "q9"
 path = "src/bin/q9.rs"
 
 [dependencies]
+thiserror = "1"
 
 [dev-dependencies]
 
