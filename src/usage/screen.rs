@@ -19,31 +19,49 @@ use crate::term::width::{bucket, WidthBucket};
 /// sequences are emitted. The caller (`run()`) is responsible
 /// for writing it to stdout.
 pub fn render(cols: u16) -> String {
-    render_for_bucket(bucket(cols))
+    render_for_bucket(bucket(cols), cols)
 }
 
-fn render_for_bucket(b: WidthBucket) -> String {
+/// Minimum total columns required to render the Medium two-column
+/// layout without wrapping. Equals the Medium left-pane width
+/// (30) + gap (2) + longest right-pane line (63 chars: the
+/// description "qorrection: PTY wrapper that intercepts Vim-style
+/// quit commands"). Below this width the Medium bucket would
+/// still technically apply but the right pane wraps mid-sentence
+/// and breaks alignment, so we fall back to the Small layout.
+const MEDIUM_MIN_TWO_COL_WIDTH: u16 = 95;
+
+fn render_for_bucket(b: WidthBucket, cols: u16) -> String {
     let right = right_pane();
     match b {
         WidthBucket::Tiny => {
             // Plain text only -- no ASCII car fits.
             super::layout::render_single_column(&right)
         }
-        WidthBucket::Small => {
-            // Compact 1-line car header above the synopsis.
-            let mut combined: Vec<&str> = vec!["[QQ] qorrection -- :q :wq :q!"];
-            combined.extend_from_slice(&right);
-            super::layout::render_single_column(&combined)
-        }
+        WidthBucket::Small => render_small(&right),
         WidthBucket::Medium => {
-            let left = car::lines(car::STD);
-            super::layout::render_two_column(&left, &right, 30, 2)
+            if cols < MEDIUM_MIN_TWO_COL_WIDTH {
+                // Right pane would wrap; degrade to the Small
+                // single-column layout rather than corrupt the
+                // alignment.
+                render_small(&right)
+            } else {
+                let left = car::lines(car::STD);
+                super::layout::render_two_column(&left, &right, 30, 2)
+            }
         }
         WidthBucket::Large => {
             let left = car::lines(car::BIG);
             super::layout::render_two_column(&left, &right, 45, 3)
         }
     }
+}
+
+fn render_small(right: &[&str]) -> String {
+    // Compact 1-line car header above the synopsis.
+    let mut combined: Vec<&str> = vec!["[QQ] qorrection -- :q :wq :q!"];
+    combined.extend_from_slice(right);
+    super::layout::render_single_column(&combined)
 }
 
 /// The right pane content (and single-column body for narrow
@@ -133,5 +151,53 @@ mod tests {
         assert!(!render(39).contains("[QQ] qorrection"));
         assert!(!render(79).contains("(O)"));
         assert!(!render(119).contains("WRITE QUEUE"));
+    }
+
+    #[test]
+    fn medium_below_min_two_col_falls_back_to_small() {
+        // 80 and 94 are inside the Medium bucket but cannot fit
+        // the right pane next to the std car without wrapping.
+        for cols in [80u16, 94] {
+            let out = render(cols);
+            assert!(
+                !out.contains("(O)"),
+                "cols={cols} should fall back to the Small layout"
+            );
+            assert!(
+                out.starts_with("[QQ] qorrection"),
+                "cols={cols} should use the Small compact car header"
+            );
+        }
+    }
+
+    #[test]
+    fn medium_at_min_two_col_uses_std_car() {
+        // 95 is the smallest column count that still fits the
+        // longest right-pane line beside the 30-wide left pane
+        // with a 2-space gap.
+        let out = render(95);
+        assert!(
+            out.contains("(O)"),
+            "cols=95 should render the std two-column car"
+        );
+    }
+
+    #[test]
+    fn no_rendered_line_exceeds_terminal_width_at_medium_or_above() {
+        // Regression for the Medium-bucket wrap: every line we
+        // emit at Medium / Large widths must fit within the
+        // requested column count. (Tiny and Small are excluded:
+        // those layouts emit the raw right pane verbatim and
+        // their long-line behavior is a separate concern tracked
+        // outside this fix.)
+        for cols in [80u16, 94, 95, 100, 119, 120, 140] {
+            let out = render(cols);
+            for line in out.lines() {
+                assert!(
+                    line.chars().count() <= cols as usize,
+                    "line {line:?} exceeds {cols} cols"
+                );
+            }
+        }
     }
 }
