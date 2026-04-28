@@ -417,13 +417,7 @@ fn drain_stale_wake_bytes(read_fd: RawFd) {
     loop {
         // SAFETY: read into a stack buffer of known length on a
         // non-blocking FD we opened ourselves.
-        let n = unsafe {
-            libc::read(
-                read_fd,
-                buf.as_mut_ptr() as *mut libc::c_void,
-                buf.len(),
-            )
-        };
+        let n = unsafe { libc::read(read_fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
         if n > 0 {
             #[allow(clippy::cast_sign_loss)]
             let n = n as usize;
@@ -577,9 +571,7 @@ mod tests {
         loop {
             // SAFETY: write a single byte to a non-blocking FD we
             // own; the descriptor came from our own pipe.
-            let rc = unsafe {
-                libc::write(cached_w, &byte as *const u8 as *const libc::c_void, 1)
-            };
+            let rc = unsafe { libc::write(cached_w, &byte as *const u8 as *const libc::c_void, 1) };
             if rc == 1 {
                 break;
             }
