@@ -22,10 +22,10 @@ include = [
 
 [[bin]]
 name = "qorrection"
-path = "src/main.rs"
+path = "src/bin/qorrection.rs"
 
-# `q9` alias is provided as a separate binary so the published crate
-# installs both entry points via `cargo install qorrection`.
+# `q9` alias shares the same library entry point so behavior is
+# identical regardless of `argv[0]`.
 [[bin]]
 name = "q9"
 path = "src/bin/q9.rs"

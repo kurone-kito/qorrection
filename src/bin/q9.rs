@@ -1,9 +1,8 @@
 //! `q9` — short alias for the `qorrection` binary.
 //!
-//! Mirrors `qorrection`'s placeholder behavior until the wrapper
-//! is implemented.
+//! Both binaries share the same library entry point so behavior
+//! is identical regardless of `argv[0]`.
 
-fn main() {
-    eprintln!("q9: implementation pending");
-    std::process::exit(2);
+fn main() -> std::process::ExitCode {
+    qorrection::run_from_env()
 }
