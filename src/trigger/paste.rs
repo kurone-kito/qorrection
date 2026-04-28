@@ -5,7 +5,7 @@
 //! foreground application has enabled bracketed-paste mode (DEC
 //! private mode 2004). While the user is inside such a span, any
 //! `:q` / `:wq` / `:q!` literal that happens to appear in the
-//! pasted bytes must NOT arm our parser — the user is pasting
+//! pasted bytes must NOT arm our parser -- the user is pasting
 //! source code, not typing a quit command.
 //!
 //! This tracker is a pure observer. It never mutates, buffers,
@@ -29,7 +29,7 @@
 //! ```
 //!
 //! The `in_paste` flag flips on the terminating `~`, never on
-//! the prefix. ESC anywhere — including inside a paste span —
+//! the prefix. ESC anywhere -- including inside a paste span --
 //! restarts the recognizer, so a legitimate `\x1b[201~` end
 //! marker is still recognized when paste mode is on.
 
@@ -89,7 +89,7 @@ impl PasteTracker {
             }
             // Any other byte breaks the prefix; we drop back to
             // Ground without touching `in_paste`. The byte itself
-            // is not "consumed" in the sense of being stolen — we
+            // is not "consumed" in the sense of being stolen -- we
             // never own bytes, we only watch them stream by.
             _ => State::Ground,
         };
@@ -191,7 +191,7 @@ mod tests {
     fn end_marker_recognized_inside_paste_span() {
         let mut t = PasteTracker::new();
         t.feed_slice(BEGIN);
-        // Pasted content that contains a literal ':q' — must NOT
+        // Pasted content that contains a literal ':q' -- must NOT
         // exit paste, must NOT be observable as a trigger here.
         t.feed_slice(b":q\nlots of pasted code\n");
         assert!(t.in_paste());

@@ -5,7 +5,7 @@
 //! shipped binary has no runtime file dependency. Each asset is
 //! pure ASCII (no UTF-8 box-drawing, no emoji) so width
 //! calculations using `str::chars().count()` are equivalent to
-//! visible columns — matters for the [`crate::usage::layout`]
+//! visible columns -- matters for the [`crate::usage::layout`]
 //! two-column padding.
 //!
 //! The size taxonomy mirrors the spec's width buckets:
@@ -20,7 +20,7 @@
 //! a plain-text gag (Phase F `anim::fallback`); the assets here
 //! simply do not apply.
 
-/// Compact 4-row car body for the 40–79 col bucket.
+/// Compact 4-row car body for the 40-79 col bucket.
 pub const TINY: &str = include_str!("assets/tiny.txt");
 /// Standard 6-row car for the `:q` scene at ≥ 80 cols.
 pub const STD: &str = include_str!("assets/std.txt");

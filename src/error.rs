@@ -27,7 +27,7 @@ pub enum Error {
     /// query, etc.). The wrapped [`std::io::Error`] preserves
     /// the original errno / source chain.
     ///
-    /// Maps to exit code 2 — there is nothing the user can do
+    /// Maps to exit code 2 -- there is nothing the user can do
     /// other than re-run, and 2 is consistent with our other
     /// pre-flight failures.
     #[error("terminal I/O failed: {0}")]

@@ -6,7 +6,7 @@
 //! restore the primary buffer on exit with `\x1b[?1049l`. While
 //! the alternate screen is up, the user is interacting with that
 //! TUI, not with the parent shell prompt, so a `:q` typed at vim
-//! must not arm our trigger — vim itself owns that keystroke.
+//! must not arm our trigger -- vim itself owns that keystroke.
 //!
 //! Unlike the paste tracker (which watches the **input** stream
 //! the user types), this tracker watches the **output** stream
@@ -19,10 +19,10 @@
 //! different terminals and applications historically used
 //! different ones interchangeably:
 //!
-//! - `?1049` — modern xterm: save cursor + switch + clear
-//! - `?1047` — older xterm: switch + clear (no save)
-//! - `?1048` — save/restore cursor only (no switch)
-//! - `?47`   — original xterm: switch only
+//! - `?1049` -- modern xterm: save cursor + switch + clear
+//! - `?1047` -- older xterm: switch + clear (no save)
+//! - `?1048` -- save/restore cursor only (no switch)
+//! - `?47`   -- original xterm: switch only
 //!
 //! `?1048` does not actually switch buffers, so we ignore it for
 //! tracking purposes. The other three all imply alt-screen.
@@ -49,9 +49,11 @@ enum State {
 pub struct AltScreenTracker {
     state: State,
     /// Decimal accumulator for the parameter digits in `Param`.
-    /// Capped at u32::MAX/10 to prevent overflow on hostile
-    /// streams; values that overflow are simply ignored — they
-    /// cannot match any of the four mode numbers anyway.
+    /// Capped at 1_000_000 (well under `u32::MAX / 10`, so the
+    /// `param * 10 + digit` step in `feed` cannot overflow) on
+    /// hostile streams; further digits past the cap are ignored
+    /// -- the four modes we care about are all 5 digits or less,
+    /// so anything past the cap cannot match anyway.
     param: u32,
     on: bool,
 }
@@ -108,7 +110,7 @@ impl AltScreenTracker {
             // Any other byte breaks the prefix; drop back to
             // Ground without touching `on`. Notably `;` (a
             // multi-parameter separator) lands here, so
-            // `\x1b[?1049;1h` is rejected — we only honour the
+            // `\x1b[?1049;1h` is rejected -- we only honour the
             // single-parameter form.
             _ => self.reset(),
         }
@@ -167,7 +169,7 @@ mod tests {
 
     #[test]
     fn mode_1048_does_not_toggle_buffer() {
-        // ?1048 saves/restores the cursor only — no buffer swap.
+        // ?1048 saves/restores the cursor only -- no buffer swap.
         let mut t = AltScreenTracker::new();
         t.feed_slice(b"\x1b[?1048h");
         assert!(!t.is_alt_screen());

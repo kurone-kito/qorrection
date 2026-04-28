@@ -23,8 +23,8 @@
 //! Ctrl-U, embedded tab, embedded ESC, etc.). The taint rule is
 //! intentionally strict: if the user reached for editing keys
 //! mid-line, we cannot reliably know what they meant to type, so
-//! we refuse to match. This costs nothing — the user can always
-//! retype the literal — and prevents false positives against
+//! we refuse to match. This costs nothing -- the user can always
+//! retype the literal -- and prevents false positives against
 //! `:qX\bq\n` style adversarial inputs.
 //!
 //! Cross-read-boundary safety: because `feed` is byte-at-a-time
@@ -43,6 +43,16 @@
 //! mode, alt-screen mode, or any other window during which bytes
 //! are routed past this parser) so that a partial dirty line
 //! cannot survive a bypass and poison the next clean line.
+//!
+//! Subtle bypass rule: the byte that *terminates* a paste-end
+//! (`~` of `\x1b[201~`) or alt-screen-leave (`l` of
+//! `\x1b[?1049l`) sequence is the byte on which the upstream
+//! tracker flips back to "off". The pump must keep that byte
+//! away from the parser too, otherwise it lands as a printable
+//! body byte. The recommended idiom is to bypass when EITHER
+//! the pre-byte OR post-byte tracker state was active. See
+//! `tests/trigger_grammar.rs::run` for a worked-out reference
+//! pump model that proves the contract end-to-end.
 
 /// What the parser saw at end-of-line.
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
@@ -50,11 +60,11 @@ pub enum Outcome {
     /// Line did not match any trigger literal.
     #[default]
     None,
-    /// `:q` — standard ambulance, FI-FO-FI-FO siren.
+    /// `:q` -- standard ambulance, FI-FO-FI-FO siren.
     Q,
-    /// `:wq` — bigger ambulance carrying the 418 label.
+    /// `:wq` -- bigger ambulance carrying the 418 label.
     Wq,
-    /// `:q!` — nine-car parade.
+    /// `:q!` -- nine-car parade.
     QBang,
 }
 

@@ -17,7 +17,7 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WidthBucket {
-    /// `< 40` columns. Triggers the plain-text fallback gag —
+    /// `< 40` columns. Triggers the plain-text fallback gag --
     /// no ASCII car art fits here.
     Tiny,
     /// `40..=79` columns. Compact one-line car header.

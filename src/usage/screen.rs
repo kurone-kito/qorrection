@@ -26,7 +26,7 @@ fn render_for_bucket(b: WidthBucket) -> String {
     let right = right_pane();
     match b {
         WidthBucket::Tiny => {
-            // Plain text only — no ASCII car fits.
+            // Plain text only -- no ASCII car fits.
             super::layout::render_single_column(&right)
         }
         WidthBucket::Small => {

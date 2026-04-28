@@ -98,7 +98,7 @@ fn unknown_long_flag_exits_two_with_diagnostic() {
 
 #[test]
 fn double_dash_is_rejected_in_v0_1() {
-    // `--` is not a separator in v0.1 — see cli::parse rationale.
+    // `--` is not a separator in v0.1 -- see cli::parse rationale.
     qorrection()
         .arg("--")
         .assert()

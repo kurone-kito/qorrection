@@ -1,4 +1,4 @@
-//! qorrection — PTY wrapper that intercepts Vim-style quit
+//! qorrection -- PTY wrapper that intercepts Vim-style quit
 //! commands and responds with playful animations.
 //!
 //! Thin shim over [`qorrection::run_from_env`]; behavior lives in

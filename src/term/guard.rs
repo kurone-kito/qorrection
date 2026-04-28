@@ -3,21 +3,21 @@
 //! Raw mode disables line discipline (no canonical-mode line
 //! buffering, no echo, no signal generation) so the wrapper can
 //! see every byte the user types. It must be restored on **every**
-//! exit path — normal return, panic, and cooperative
-//! signal-driven shutdown — or the user is left with a wedged
+//! exit path -- normal return, panic, and cooperative
+//! signal-driven shutdown -- or the user is left with a wedged
 //! terminal until they type `stty sane` blind.
 //!
 //! Rules (locked v0.1, see plan §6 D-RAWMODE):
 //!
 //! - Acquire only when **both** stdin and stdout are TTYs. The
 //!   non-TTY path bypasses PTY entirely (D-NONTTY) and so must
-//!   also bypass raw mode — touching termios on a pipe is
+//!   also bypass raw mode -- touching termios on a pipe is
 //!   undefined.
 //! - Restoration runs in [`Drop`], so any panic between
 //!   acquisition and the end of the session unwinds back through
 //!   the guard and disables raw mode on the way out.
 //! - Uncatchable termination (SIGKILL, abort) **cannot** be
-//!   handled — release notes recommend `stty sane`.
+//!   handled -- release notes recommend `stty sane`.
 
 use crate::{term::TerminalCaps, Result};
 

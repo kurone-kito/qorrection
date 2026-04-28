@@ -5,7 +5,7 @@
 //! 1. A pure layout primitive ([`render_two_column`]) that joins
 //!    a left and a right pane side-by-side, padding the shorter
 //!    pane with blank lines. This module currently contains only
-//!    layer 1 — Phase C4 will wire the actual usage content
+//!    layer 1 -- Phase C4 will wire the actual usage content
 //!    (synopsis, triggers, repo URL) on top.
 //! 2. The `usage` entry point that picks a [`crate::term::width::WidthBucket`]
 //!    (single column for Tiny/Small, two column for Medium/Large)

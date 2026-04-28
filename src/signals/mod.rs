@@ -15,7 +15,7 @@
 //! - SIGTERM  → handler writes one byte: [`EVT_TERM`] (`b'T'`).
 //!
 //! The handler does exactly one async-signal-safe `write(2)`
-//! and ignores any error (including `EAGAIN` from a full pipe —
+//! and ignores any error (including `EAGAIN` from a full pipe --
 //! a pending wake byte is already in flight, which is what we
 //! wanted).
 //!
@@ -152,7 +152,7 @@ impl SignalGuard {
     /// decode them. Returns an empty vec if no signals are
     /// pending (`EAGAIN`).
     ///
-    /// Unknown bytes are silently dropped — the protocol is
+    /// Unknown bytes are silently dropped -- the protocol is
     /// closed in v0.1, so any unknown byte is by definition a
     /// future-version artifact we should not crash on.
     pub fn drain(&self) -> io::Result<Vec<Event>> {
@@ -174,7 +174,7 @@ impl SignalGuard {
                 if n < buf.len() {
                     return Ok(events);
                 }
-                // Loop again — there may be more.
+                // Loop again -- there may be more.
             } else if n == 0 {
                 return Ok(events);
             } else {
@@ -328,7 +328,7 @@ extern "C" fn handler(sig: libc::c_int) {
     // SAFETY: write(2) is async-signal-safe (POSIX.1-2017). We
     // write exactly one byte from a stack location; failure
     // (including EAGAIN on a full pipe) is intentionally
-    // ignored — a wake byte is already pending in that case.
+    // ignored -- a wake byte is already pending in that case.
     unsafe {
         libc::write(fd, &byte as *const u8 as *const libc::c_void, 1);
     }
@@ -391,7 +391,7 @@ mod tests {
         let _serial = SERIAL.lock().unwrap();
         // Install + drop, then verify SIGWINCH no longer writes
         // to a (now-closed) pipe by re-installing and confirming
-        // it succeeds — a stale handler would be using the old
+        // it succeeds -- a stale handler would be using the old
         // FD and we'd never know, but at least the singleton
         // bookkeeping must be reset.
         {
