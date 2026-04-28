@@ -89,6 +89,13 @@ impl AltScreenTracker {
             (_, 0x1b) => {
                 self.state = State::Esc;
                 self.param = 0;
+                // Drop any half-collected multi-parameter alt
+                // match -- the new ESC starts a fresh sequence
+                // that may not even use the `?` private prefix
+                // (e.g. CSI `1 h` with `?` omitted), and the
+                // stale flag would otherwise toggle on the next
+                // `h`/`l`.
+                self.saw_alt_param = false;
             }
             (State::Esc, b'[') => {
                 self.state = State::Csi;
@@ -261,6 +268,19 @@ mod tests {
         // does not inherit it.
         t.feed_slice(b"\x1b[?1049;X");
         t.feed_slice(b"\x1b[?1h");
+        assert!(!t.is_alt_screen());
+    }
+
+    #[test]
+    fn esc_mid_param_clears_pending_alt_match_for_next_csi() {
+        // Regression: ESC restarts the parser mid-list, but the
+        // next CSI may omit the `?` private prefix entirely
+        // (e.g. CSI `1 h`). The half-collected alt match from
+        // the interrupted sequence must not leak into that
+        // unrelated terminator.
+        let mut t = AltScreenTracker::new();
+        t.feed_slice(b"\x1b[?1049;");
+        t.feed_slice(b"\x1b[1h");
         assert!(!t.is_alt_screen());
     }
 
