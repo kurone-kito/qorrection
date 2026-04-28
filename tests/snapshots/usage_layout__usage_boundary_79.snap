@@ -1,0 +1,24 @@
+---
+source: tests/usage_layout.rs
+expression: render(79)
+---
+[QQ] qorrection -- :q :wq :q!
+qorrection 0.0.0
+qorrection: PTY wrapper that intercepts Vim-style quit commands
+and dispatches FI-FO-FI-FO ambulance gags.
+
+USAGE:
+  q9 <cmd> [args...]
+  qorrection <cmd> [args...]
+
+TRIGGERS (active only when <cmd> is one of:
+  copilot, codex, claude, aichat, gemini, qwen, ollama):
+  :q   -> standard ambulance, FI-FO-FI-FO siren trail
+  :wq  -> larger ambulance carrying "418 I'm an AI agent"
+  :q!  -> 9-car parade (really wanted 9! = 362880)
+
+FLAGS:
+  -h, --help       show this screen
+  -V, --version    print 'qorrection X.Y.Z' and exit
+
+https://github.com/kurone-kito/qorrection

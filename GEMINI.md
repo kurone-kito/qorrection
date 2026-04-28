@@ -45,7 +45,7 @@ redirect.
   and `cargo test` must pass before opening a PR.
 - Prefer `anyhow::Result` at the binary boundary; use
   `thiserror`-derived errors at library module boundaries.
-- Core dependencies: `portable-pty`, `crossterm`, `clap`,
+- Core dependencies: `portable-pty`, `crossterm`,
   `anyhow`, `thiserror`, `tracing`. Justify new ones in the
   commit body.
 - `unsafe` is forbidden by default; introducing it requires a

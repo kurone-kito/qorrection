@@ -1,0 +1,71 @@
+//! Crate-level error type.
+//!
+//! [`Error`] is the boundary type returned by fallible
+//! library operations. Binaries map it to an [`std::process::ExitCode`]
+//! via [`Error::exit_code`].
+//!
+//! Variants are intentionally narrow at this stage; subsequent
+//! phases will add transports for PTY, terminal, and trigger
+//! errors as those modules land.
+
+use std::ffi::OsString;
+
+/// Errors returned by [`crate::run`] and downstream library
+/// functions.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// The user passed a flag-like argument that the CLI does not
+    /// recognize (anything starting with `-` that isn't one of
+    /// the four metadata cases).
+    ///
+    /// Maps to exit code 2 and is rendered by [`crate::run_from_env`]
+    /// as a one-line stderr diagnostic prefixed with the program
+    /// name (e.g. `qorrection: unknown option: "--bogus"`); the
+    /// actual usage screen is only printed for the dedicated
+    /// `-h`/`--help` cases.
+    #[error("unknown option: {0:?}")]
+    UnknownOption(OsString),
+
+    /// A terminal I/O operation failed (raw-mode toggle, size
+    /// query, etc.). The wrapped [`std::io::Error`] preserves
+    /// the original errno / source chain.
+    ///
+    /// Maps to exit code 2 -- there is nothing the user can do
+    /// other than re-run, and 2 is consistent with our other
+    /// pre-flight failures.
+    #[error("terminal I/O failed: {0}")]
+    Terminal(#[from] std::io::Error),
+}
+
+impl Error {
+    /// Recommended process exit code for this error variant.
+    ///
+    /// All current variants are pre-flight failures and use the
+    /// POSIX-conventional `2`.
+    pub fn exit_code(&self) -> u8 {
+        match self {
+            Error::UnknownOption(_) | Error::Terminal(_) => 2,
+        }
+    }
+}
+
+/// Convenience alias for fallible operations in this crate.
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_option_renders_offending_token() {
+        let err = Error::UnknownOption("--bogus".into());
+        let msg = err.to_string();
+        assert!(msg.contains("--bogus"), "rendered message: {msg}");
+    }
+
+    #[test]
+    fn unknown_option_exits_with_two() {
+        let err = Error::UnknownOption("--bogus".into());
+        assert_eq!(err.exit_code(), 2);
+    }
+}
