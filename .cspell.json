@@ -68,6 +68,7 @@
     "SIGWINCH",
     "ssize",
     "stty",
+    "syscall",
     "tcgetattr",
     "tcsetattr",
     "termios",
