@@ -27,10 +27,13 @@
 //! `?1048` does not actually switch buffers, so we ignore it for
 //! tracking purposes. The other three all imply alt-screen.
 //!
-//! Recognizer shape: `\x1b [ ? <digits> h|l`. We refuse to
-//! recognize sequences with intermediate parameters or private
-//! markers other than the `?` we just consumed, so a stray
-//! `\x1b[?1049;1h` won't false-trigger.
+//! Recognizer shape: `\x1b [ ? <param-list> h|l`, where
+//! `<param-list>` is one or more decimal parameters separated by
+//! `;`. The state flips if **any** parameter in the list matches
+//! one of the alt-screen mode numbers above, so multi-parameter
+//! forms like `\x1b[?1049;1h` (mode 1049 + DECCKM) and
+//! `\x1b[?1;1049h` are both honoured. Empty params (e.g. the
+//! leading `;` in `\x1b[?;1049h`) decode as `0` and never match.
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 enum State {
@@ -55,6 +58,13 @@ pub struct AltScreenTracker {
     /// -- the four modes we care about are all 5 digits or less,
     /// so anything past the cap cannot match anyway.
     param: u32,
+    /// Sticky flag: set when any completed parameter in the
+    /// current CSI sequence matches an alt-screen mode number.
+    /// Combined with the final parameter at the terminating
+    /// `h`/`l` to decide whether to toggle. Cleared by every
+    /// recognizer reset (ESC resync, malformed byte, completed
+    /// sequence) so it can never leak into a later sequence.
+    saw_alt_param: bool,
     on: bool,
 }
 
@@ -86,6 +96,7 @@ impl AltScreenTracker {
             (State::Csi, b'?') => {
                 self.state = State::Param;
                 self.param = 0;
+                self.saw_alt_param = false;
             }
             (State::Param, b'0'..=b'9') => {
                 // Saturating-style guard: ignore further digits
@@ -95,23 +106,30 @@ impl AltScreenTracker {
                     self.param = self.param * 10 + u32::from(b - b'0');
                 }
             }
+            (State::Param, b';') => {
+                // Multi-parameter list: stash whether the param
+                // we just finished matches an alt-screen mode,
+                // then reset the accumulator and stay in Param
+                // for the next sub-parameter.
+                if is_alt_mode(self.param) {
+                    self.saw_alt_param = true;
+                }
+                self.param = 0;
+            }
             (State::Param, b'h') => {
-                if matches!(self.param, 47 | 1047 | 1049) {
+                if self.saw_alt_param || is_alt_mode(self.param) {
                     self.on = true;
                 }
                 self.reset();
             }
             (State::Param, b'l') => {
-                if matches!(self.param, 47 | 1047 | 1049) {
+                if self.saw_alt_param || is_alt_mode(self.param) {
                     self.on = false;
                 }
                 self.reset();
             }
             // Any other byte breaks the prefix; drop back to
-            // Ground without touching `on`. Notably `;` (a
-            // multi-parameter separator) lands here, so
-            // `\x1b[?1049;1h` is rejected -- we only honour the
-            // single-parameter form.
+            // Ground without touching `on`.
             _ => self.reset(),
         }
         self.on
@@ -120,6 +138,7 @@ impl AltScreenTracker {
     fn reset(&mut self) {
         self.state = State::Ground;
         self.param = 0;
+        self.saw_alt_param = false;
     }
 
     /// Slice helper symmetric with the paste tracker.
@@ -129,6 +148,13 @@ impl AltScreenTracker {
         }
         self.on
     }
+}
+
+/// `true` when `param` is one of the alt-screen mode numbers
+/// we honour. Kept as a free function so the `;` and `h`/`l`
+/// arms in `feed` stay short and obviously consistent.
+fn is_alt_mode(param: u32) -> bool {
+    matches!(param, 47 | 1047 | 1049)
 }
 
 #[cfg(test)]
@@ -190,10 +216,51 @@ mod tests {
     }
 
     #[test]
-    fn multi_param_form_is_rejected() {
-        // We only honour the single-parameter form; `;` aborts.
+    fn multi_param_form_with_alt_mode_first_is_recognized() {
         let mut t = AltScreenTracker::new();
         t.feed_slice(b"\x1b[?1049;1h");
+        assert!(t.is_alt_screen());
+    }
+
+    #[test]
+    fn multi_param_form_with_alt_mode_last_is_recognized() {
+        let mut t = AltScreenTracker::new();
+        t.feed_slice(b"\x1b[?1;1049h");
+        assert!(t.is_alt_screen());
+    }
+
+    #[test]
+    fn multi_param_form_without_alt_mode_does_not_toggle() {
+        let mut t = AltScreenTracker::new();
+        t.feed_slice(b"\x1b[?1;25h");
+        assert!(!t.is_alt_screen());
+    }
+
+    #[test]
+    fn multi_param_leave_recognized_anywhere_in_list() {
+        let mut t = AltScreenTracker::new();
+        t.feed_slice(b"\x1b[?1049h");
+        assert!(t.is_alt_screen());
+        t.feed_slice(b"\x1b[?1;1049l");
+        assert!(!t.is_alt_screen());
+    }
+
+    #[test]
+    fn empty_param_decodes_as_zero_and_does_not_match() {
+        let mut t = AltScreenTracker::new();
+        t.feed_slice(b"\x1b[?;1h");
+        assert!(!t.is_alt_screen());
+    }
+
+    #[test]
+    fn malformed_then_unrelated_h_does_not_falsely_toggle() {
+        let mut t = AltScreenTracker::new();
+        // Saw `?1049;` then a non-digit, non-`;`, non-`h`/`l`
+        // byte aborts the recognizer; the `saw_alt_param` flag
+        // must be cleared so the unrelated `\x1b[?1h` below
+        // does not inherit it.
+        t.feed_slice(b"\x1b[?1049;X");
+        t.feed_slice(b"\x1b[?1h");
         assert!(!t.is_alt_screen());
     }
 
