@@ -555,14 +555,26 @@ mod tests {
             g.write_fd
         };
         // Forge a stale wake byte on the cached write end after
-        // the previous guard is gone.
+        // the previous guard is gone. Assert the write succeeded
+        // so a future regression in cached-FD lifetime cannot
+        // make this test pass vacuously on an empty pipe.
         let byte = EVT_TERM;
-        // SAFETY: write a single byte to a non-blocking FD we
-        // own; ignore the result -- we only care that *something*
-        // is queued for the next install to discard.
-        let _ = unsafe {
-            libc::write(cached_w, &byte as *const u8 as *const libc::c_void, 1)
-        };
+        loop {
+            // SAFETY: write a single byte to a non-blocking FD we
+            // own; the descriptor came from our own pipe.
+            let rc = unsafe {
+                libc::write(cached_w, &byte as *const u8 as *const libc::c_void, 1)
+            };
+            if rc == 1 {
+                break;
+            }
+            let err = io::Error::last_os_error();
+            assert_eq!(
+                err.kind(),
+                io::ErrorKind::Interrupted,
+                "failed to forge stale wake byte: {err}"
+            );
+        }
         let g = SignalGuard::install().expect("reinstall");
         let events = g.drain().expect("drain");
         assert!(events.is_empty(), "stale wake bytes leaked: {events:?}");
