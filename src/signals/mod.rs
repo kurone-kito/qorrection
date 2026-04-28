@@ -113,8 +113,8 @@ impl SignalGuard {
         // a time.
         let cached_r = CACHED_READ_FD.load(Ordering::Acquire);
         let cached_w = CACHED_WRITE_FD.load(Ordering::Acquire);
-        let (read_fd, write_fd) = if cached_r >= 0 && cached_w >= 0 {
-            (cached_r, cached_w)
+        let (read_fd, write_fd, opened_new) = if cached_r >= 0 && cached_w >= 0 {
+            (cached_r, cached_w, false)
         } else {
             // Open the self-pipe with O_NONBLOCK | O_CLOEXEC so the
             // I/O loop can drain it without blocking and forks do
@@ -129,9 +129,7 @@ impl SignalGuard {
                     return Err(e.into());
                 }
             };
-            CACHED_READ_FD.store(pair.0, Ordering::Release);
-            CACHED_WRITE_FD.store(pair.1, Ordering::Release);
-            pair
+            (pair.0, pair.1, true)
         };
         WRITE_FD.store(write_fd, Ordering::Release);
 
@@ -139,7 +137,13 @@ impl SignalGuard {
             Ok(prev) => prev,
             Err(e) => {
                 WRITE_FD.store(-1, Ordering::Release);
-                cleanup_pipe(read_fd, write_fd);
+                if opened_new {
+                    // Cache was never published with these FDs, so
+                    // closing them here cannot poison a future
+                    // install with stale (potentially OS-recycled)
+                    // descriptors.
+                    cleanup_pipe(read_fd, write_fd);
+                }
                 INSTALLED.store(false, Ordering::Release);
                 return Err(e.into());
             }
@@ -155,9 +159,9 @@ impl SignalGuard {
                 // this thread to silence further deliveries here,
                 // restore the previous SIGWINCH handler so no new
                 // invocations enter our code, then zero `WRITE_FD`
-                // and leave the pipe open. The FDs remain in the
+                // and leave the pipe open. Publish the FDs to the
                 // process-global cache so the next `install` call
-                // reuses them rather than opening another pipe.
+                // reuses them rather than leaking a fresh pipe.
                 let _mask = BlockedSignals::block(&[libc::SIGWINCH]);
                 // SAFETY: `old_winch` is the value libc handed us
                 // from the matching sigaction call above.
@@ -165,11 +169,22 @@ impl SignalGuard {
                     libc::sigaction(libc::SIGWINCH, &old_winch, std::ptr::null_mut());
                 }
                 WRITE_FD.store(-1, Ordering::Release);
-                let _ = (read_fd, write_fd); // intentionally cached, not leaked
+                if opened_new {
+                    CACHED_READ_FD.store(read_fd, Ordering::Release);
+                    CACHED_WRITE_FD.store(write_fd, Ordering::Release);
+                }
                 INSTALLED.store(false, Ordering::Release);
                 return Err(e.into());
             }
         };
+
+        // Both handlers installed cleanly. Publish the FDs to the
+        // cache only now so a failed install never leaves stale
+        // descriptors visible to the next call.
+        if opened_new {
+            CACHED_READ_FD.store(read_fd, Ordering::Release);
+            CACHED_WRITE_FD.store(write_fd, Ordering::Release);
+        }
 
         Ok(Self {
             read_fd,
