@@ -45,6 +45,7 @@ libc = "0.2"
 # bump (its own atomic commit per repo policy).
 assert_cmd = "=2.0.17"
 predicates = "3"
+insta = "1"
 
 [profile.release]
 lto = "thin"
