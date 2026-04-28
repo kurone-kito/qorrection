@@ -40,8 +40,12 @@ pub fn run_from_env() -> ExitCode {
 pub fn run(args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
     match cli::parse(args)? {
         cli::Invocation::Usage => {
-            eprintln!("qorrection: usage screen pending");
-            Ok(ExitCode::from(2))
+            // POSIX-style: explicit `--help`/`-h`/no-args is a
+            // discovery path, not an error. Print to stdout and
+            // exit 0. Phase C replaces this placeholder with the
+            // real fastfetch-style usage screen.
+            println!("qorrection: usage screen pending");
+            Ok(ExitCode::SUCCESS)
         }
         cli::Invocation::Version => {
             println!("qorrection {}", env!("CARGO_PKG_VERSION"));
