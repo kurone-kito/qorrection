@@ -1,19 +1,18 @@
 concurrency:
+  # PR runs are grouped by PR number so a newer push supersedes the
+  # older run. Non-PR runs (push to main, workflow_dispatch) get a
+  # unique group keyed on run_id so they never cancel each other,
+  # even under rapid merges or repeated manual dispatches. Tag
+  # pushes are handled by `release.yml`, not here.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: true
-  # Dedupe push and pull_request runs for the same head ref. For
-  # same-repo PRs, the `push` event uses `github.ref`
-  # (refs/heads/<branch>) while the `pull_request` event uses
-  # `github.event.pull_request.number`, so keying on either alone
-  # leaves both runs alive. Key on the head repo + head branch (or
-  # ref, for push events on `main` etc.) so duplicate runs collapse.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
 name: CI
 on:
   push:
     branches:
-      - '**'
-      - '!main'
+      - main
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
