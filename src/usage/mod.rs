@@ -17,5 +17,7 @@
 //! bytes are byte-stable across runs.
 
 mod layout;
+mod screen;
 
 pub use layout::{render_single_column, render_two_column};
+pub use screen::render;

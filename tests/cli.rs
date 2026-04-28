@@ -61,7 +61,7 @@ fn no_args_shows_usage_placeholder_on_stdout_exit_zero() {
     qorrection()
         .assert()
         .success()
-        .stdout(predicate::str::contains("usage screen pending"))
+        .stdout(predicate::str::contains("USAGE:"))
         .stderr(predicate::str::is_empty());
 }
 
@@ -71,7 +71,7 @@ fn help_long_flag_routes_to_usage() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("usage screen pending"))
+        .stdout(predicate::str::contains("USAGE:"))
         .stderr(predicate::str::is_empty());
 }
 
@@ -81,7 +81,7 @@ fn help_short_flag_routes_to_usage() {
         .arg("-h")
         .assert()
         .success()
-        .stdout(predicate::str::contains("usage screen pending"))
+        .stdout(predicate::str::contains("USAGE:"))
         .stderr(predicate::str::is_empty());
 }
 

@@ -45,11 +45,15 @@ pub fn run_from_env() -> ExitCode {
 pub fn run(args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
     match cli::parse(args)? {
         cli::Invocation::Usage => {
-            // POSIX-style: explicit `--help`/`-h`/no-args is a
-            // discovery path, not an error. Print to stdout and
-            // exit 0. Phase C replaces this placeholder with the
-            // real fastfetch-style usage screen.
-            println!("qorrection: usage screen pending");
+            // Pick the current terminal width (fall back to 80
+            // when not on a TTY or detection fails) so the
+            // fastfetch-style layout responds to the user's
+            // window. Phase E will refine TTY-vs-pipe handling
+            // for piped stdout; for now we always render to
+            // stdout because every Usage path is reachable from
+            // an interactive prompt.
+            let cols = crossterm::terminal::size().map(|(c, _)| c).unwrap_or(80);
+            print!("{}", usage::render(cols));
             Ok(ExitCode::SUCCESS)
         }
         cli::Invocation::Version => {
