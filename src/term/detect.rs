@@ -13,8 +13,11 @@
 //!   (per <https://no-color.org/>).
 //! - `ci` → the `CI` env var is present and non-empty (the
 //!   convention every major CI provider follows).
-//! - `utf8` → any of `LC_ALL`, `LC_CTYPE`, or `LANG` mentions
-//!   `UTF-8` / `utf8` (case-insensitive).
+//! - `utf8` → POSIX locale precedence -- the first non-empty of
+//!   `LC_ALL`, `LC_CTYPE`, `LANG` decides; `utf8` is true iff
+//!   that winning value mentions `UTF-8` / `utf8`
+//!   (case-insensitive). Lower-priority variables are ignored
+//!   exactly as `setlocale(3)` does.
 
 use std::io::IsTerminal;
 
@@ -100,10 +103,15 @@ fn is_set(value: Option<&str>) -> bool {
 }
 
 fn is_utf8_locale(env: &EnvSnapshot) -> bool {
+    // POSIX precedence: LC_ALL overrides everything; otherwise
+    // LC_CTYPE; otherwise LANG. An empty value is treated as
+    // unset, matching glibc's `setlocale(3)` behavior.
     [&env.lc_all, &env.lc_ctype, &env.lang]
         .into_iter()
         .filter_map(Option::as_deref)
-        .any(mentions_utf8)
+        .find(|s| !s.is_empty())
+        .map(mentions_utf8)
+        .unwrap_or(false)
 }
 
 fn mentions_utf8(value: &str) -> bool {
@@ -227,6 +235,36 @@ mod tests {
     #[test]
     fn no_locale_set_is_not_utf8() {
         assert!(!detect_with(&env(), true, true).utf8);
+    }
+
+    #[test]
+    fn lc_all_overrides_lower_priority_utf8() {
+        // POSIX precedence: an LC_ALL of `C` must mask a
+        // UTF-8 LANG / LC_CTYPE -- the previous "any match"
+        // semantics incorrectly accepted these.
+        let mut e = env();
+        e.lc_all = Some("C".into());
+        e.lang = Some("en_US.UTF-8".into());
+        e.lc_ctype = Some("en_US.UTF-8".into());
+        assert!(!detect_with(&e, true, true).utf8);
+    }
+
+    #[test]
+    fn lc_ctype_overrides_lang_utf8() {
+        let mut e = env();
+        e.lc_ctype = Some("C".into());
+        e.lang = Some("en_US.UTF-8".into());
+        assert!(!detect_with(&e, true, true).utf8);
+    }
+
+    #[test]
+    fn empty_lc_all_falls_through_to_lc_ctype() {
+        // glibc treats an empty value as unset; the next
+        // non-empty variable in the chain must win.
+        let mut e = env();
+        e.lc_all = Some(String::new());
+        e.lc_ctype = Some("en_US.UTF-8".into());
+        assert!(detect_with(&e, true, true).utf8);
     }
 
     #[test]
