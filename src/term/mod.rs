@@ -12,5 +12,7 @@
 //! the implementation is split.
 
 pub mod detect;
+pub mod width;
 
 pub use detect::TerminalCaps;
+pub use width::{bucket, WidthBucket};
