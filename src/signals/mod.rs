@@ -508,6 +508,30 @@ mod tests {
     }
 
     #[test]
+    fn install_and_drain_term() {
+        // Positive coverage for SIGTERM mapping: a broken
+        // handler install or decode regression for SIGTERM would
+        // otherwise slip past the SIGWINCH-only delivery test
+        // and the install-failure injection tests.
+        let _serial = SERIAL.lock().unwrap();
+        let guard = SignalGuard::install().expect("install");
+        // SAFETY: SIGTERM's default action is to terminate, but
+        // our handler is installed by `install()` above and
+        // overrides that, writing one byte to the self-pipe.
+        let rc = unsafe { libc::kill(libc::getpid(), libc::SIGTERM) };
+        assert_eq!(rc, 0);
+        let mut events = Vec::new();
+        for _ in 0..100 {
+            events.extend(guard.drain().unwrap());
+            if !events.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(events, vec![Event::Shutdown]);
+    }
+
+    #[test]
     fn double_install_is_rejected() {
         let _serial = SERIAL.lock().unwrap();
         let _g = SignalGuard::install().expect("first install");
