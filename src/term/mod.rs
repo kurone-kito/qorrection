@@ -12,7 +12,9 @@
 //! the implementation is split.
 
 pub mod detect;
+pub mod guard;
 pub mod width;
 
 pub use detect::TerminalCaps;
+pub use guard::{acquire as acquire_raw, RawGuard};
 pub use width::{bucket, WidthBucket};

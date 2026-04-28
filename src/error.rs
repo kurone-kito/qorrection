@@ -22,16 +22,26 @@ pub enum Error {
     /// stderr by the binary entry point.
     #[error("unknown option: {0:?}")]
     UnknownOption(OsString),
+
+    /// A terminal I/O operation failed (raw-mode toggle, size
+    /// query, etc.). The wrapped [`std::io::Error`] preserves
+    /// the original errno / source chain.
+    ///
+    /// Maps to exit code 2 — there is nothing the user can do
+    /// other than re-run, and 2 is consistent with our other
+    /// pre-flight failures.
+    #[error("terminal I/O failed: {0}")]
+    Terminal(#[from] std::io::Error),
 }
 
 impl Error {
     /// Recommended process exit code for this error variant.
     ///
-    /// All current variants are CLI-usage errors and use the
+    /// All current variants are pre-flight failures and use the
     /// POSIX-conventional `2`.
     pub fn exit_code(&self) -> u8 {
         match self {
-            Error::UnknownOption(_) => 2,
+            Error::UnknownOption(_) | Error::Terminal(_) => 2,
         }
     }
 }
