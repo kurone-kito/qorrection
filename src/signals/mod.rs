@@ -60,15 +60,26 @@ static INSTALLED: AtomicBool = AtomicBool::new(false);
 // Write end of the self-pipe, exposed to the C signal handler.
 // `i32` because libc fds are int; -1 means "no handler armed".
 static WRITE_FD: AtomicI32 = AtomicI32::new(-1);
+// Cached self-pipe FDs from previous guard installations. We
+// cannot close them on Drop (see the `Drop` comment for the
+// async-signal-safe TOCTOU rationale) and we cannot grow them
+// either: a long-lived embedding host that installs/drops the
+// guard repeatedly would otherwise leak two FDs per cycle until
+// `pipe2` fails with `EMFILE`. Reuse the same pair on every
+// reinstall instead of opening a fresh pipe each time.
+static CACHED_READ_FD: AtomicI32 = AtomicI32::new(-1);
+static CACHED_WRITE_FD: AtomicI32 = AtomicI32::new(-1);
 
 /// RAII handle for the installed SIGWINCH/SIGTERM handlers.
 ///
-/// Drop restores the previous handlers and intentionally **leaks**
-/// both ends of the self-pipe (see the comment on `Drop` for why
-/// closing them is async-signal-unsafe). Holding the guard alive
-/// (typically as a local in `pty::run_session`) keeps the wake
-/// mechanism armed; dropping it disarms further wake-ups but does
-/// not free the two file descriptors.
+/// Drop restores the previous handlers but does **not** close
+/// the self-pipe FDs (see the comment on `Drop` for the
+/// async-signal-safe TOCTOU rationale). The first install opens
+/// the pipe and caches both ends in process-global atomics; any
+/// subsequent install in the same process reuses that cached
+/// pair instead of opening a fresh one, so repeated
+/// install/drop cycles in long-lived embedding hosts do not
+/// leak two FDs per cycle.
 #[derive(Debug)]
 pub struct SignalGuard {
     read_fd: RawFd,
@@ -94,18 +105,33 @@ impl SignalGuard {
             .into());
         }
 
-        // Open the self-pipe with O_NONBLOCK | O_CLOEXEC so the
-        // I/O loop can drain it without blocking and forks do
-        // not inherit the FDs. macOS lacks `pipe2(2)`, so we
-        // emulate it with `pipe` + `fcntl`. The CLOEXEC race
-        // window is acceptable: qorrection does not fork between
-        // here and the fcntl calls.
-        let (read_fd, write_fd) = match open_self_pipe() {
-            Ok(p) => p,
-            Err(e) => {
-                INSTALLED.store(false, Ordering::Release);
-                return Err(e.into());
-            }
+        // Reuse the previously-leaked pipe FDs if a SignalGuard
+        // was installed and dropped earlier in this process.
+        // Otherwise open a fresh pipe and stash the FDs for any
+        // future reinstall. `INSTALLED` already serialises
+        // these stores -- only one thread reaches this code at
+        // a time.
+        let cached_r = CACHED_READ_FD.load(Ordering::Acquire);
+        let cached_w = CACHED_WRITE_FD.load(Ordering::Acquire);
+        let (read_fd, write_fd) = if cached_r >= 0 && cached_w >= 0 {
+            (cached_r, cached_w)
+        } else {
+            // Open the self-pipe with O_NONBLOCK | O_CLOEXEC so the
+            // I/O loop can drain it without blocking and forks do
+            // not inherit the FDs. macOS lacks `pipe2(2)`, so we
+            // emulate it with `pipe` + `fcntl`. The CLOEXEC race
+            // window is acceptable: qorrection does not fork between
+            // here and the fcntl calls.
+            let pair = match open_self_pipe() {
+                Ok(p) => p,
+                Err(e) => {
+                    INSTALLED.store(false, Ordering::Release);
+                    return Err(e.into());
+                }
+            };
+            CACHED_READ_FD.store(pair.0, Ordering::Release);
+            CACHED_WRITE_FD.store(pair.1, Ordering::Release);
+            pair
         };
         WRITE_FD.store(write_fd, Ordering::Release);
 
@@ -129,8 +155,9 @@ impl SignalGuard {
                 // this thread to silence further deliveries here,
                 // restore the previous SIGWINCH handler so no new
                 // invocations enter our code, then zero `WRITE_FD`
-                // and leak the pipe FDs. The leak is bounded
-                // because `INSTALLED` enforces single-instance.
+                // and leave the pipe open. The FDs remain in the
+                // process-global cache so the next `install` call
+                // reuses them rather than opening another pipe.
                 let _mask = BlockedSignals::block(&[libc::SIGWINCH]);
                 // SAFETY: `old_winch` is the value libc handed us
                 // from the matching sigaction call above.
@@ -138,7 +165,7 @@ impl SignalGuard {
                     libc::sigaction(libc::SIGWINCH, &old_winch, std::ptr::null_mut());
                 }
                 WRITE_FD.store(-1, Ordering::Release);
-                let _ = (read_fd, write_fd); // intentionally leaked
+                let _ = (read_fd, write_fd); // intentionally cached, not leaked
                 INSTALLED.store(false, Ordering::Release);
                 return Err(e.into());
             }
@@ -214,11 +241,12 @@ impl Drop for SignalGuard {
         // POSIX allows: restore the previous handlers FIRST (no
         // new invocations can enter our code after `sigaction`
         // returns), zero `WRITE_FD` so the still-running handler
-        // skips its write on the next load, and then deliberately
-        // **leak** both ends of the self-pipe. Any handler still
-        // mid-flight just writes to a still-open fd -- harmless.
-        // The leak is bounded to two FDs per process because
-        // `INSTALLED` enforces single-instance installation.
+        // skips its write on the next load, and leave both ends
+        // of the self-pipe open. Any handler still mid-flight just
+        // writes to a still-open fd -- harmless. The two FDs stay
+        // cached in `CACHED_READ_FD` / `CACHED_WRITE_FD` and are
+        // reused by the next `install` call, so repeated
+        // install/drop cycles do not exhaust the process FD table.
         //
         // The thread-local mask still helps: it silences any
         // signal that arrives at this thread while we re-install
@@ -232,7 +260,8 @@ impl Drop for SignalGuard {
             libc::sigaction(libc::SIGTERM, &self.old_term, std::ptr::null_mut());
         }
         WRITE_FD.store(-1, Ordering::Release);
-        // Intentionally leaked. See comment above.
+        // FDs deliberately stay open and remain cached for any
+        // future `install` (see comment above and `install`).
         let _ = (self.read_fd, self.write_fd);
         INSTALLED.store(false, Ordering::Release);
     }
@@ -425,5 +454,25 @@ mod tests {
             let _g = SignalGuard::install().expect("install");
         }
         let _g2 = SignalGuard::install().expect("re-install after drop");
+    }
+
+    #[test]
+    fn reinstall_reuses_cached_self_pipe_fds() {
+        // Regression: Drop must not close the self-pipe (TOCTOU
+        // with in-flight handlers), but the FDs also must not
+        // accumulate across install/drop cycles. The first
+        // install opens the pipe and caches both ends; every
+        // subsequent install in this process must reuse those
+        // exact descriptors.
+        let _serial = SERIAL.lock().unwrap();
+        let (first_r, first_w) = {
+            let g = SignalGuard::install().expect("first install");
+            (g.read_fd, g.write_fd)
+        };
+        for _ in 0..5 {
+            let g = SignalGuard::install().expect("reinstall");
+            assert_eq!(g.read_fd, first_r, "read_fd must be reused");
+            assert_eq!(g.write_fd, first_w, "write_fd must be reused");
+        }
     }
 }
