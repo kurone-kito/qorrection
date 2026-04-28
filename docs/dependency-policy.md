@@ -15,11 +15,11 @@ code land together.
 | Crate | Purpose | Status |
 | ----- | ------- | ------ |
 | `thiserror` | Crate-level `Error` enum at the library boundary | added |
+| `crossterm` | ANSI / TUI primitives, cursor control, raw mode, terminal size | added |
+| `libc` (Unix only) | `sigaction`, `pipe2`, `tcsetattr` for the SIGWINCH/SIGTERM self-pipe and raw-mode guard. Gated to `[target.'cfg(unix)'.dependencies]` so Windows builds skip it entirely. | added |
 | `portable-pty` | Cross-platform PTY spawning (Unix PTY + Windows ConPTY) | planned (Phase E) |
-| `crossterm` | ANSI / TUI primitives, cursor control, raw mode | planned (Phase B) |
 | `anyhow` | Carry `portable-pty`'s `anyhow::Error` results without losing the source chain at the crate `Error` boundary | planned (Phase E) |
 | `tracing` + `tracing-subscriber` | Optional structured diagnostics, gated by `QORRECTION_LOG` | planned (Phase E) |
-| `libc` | `sigaction`, `pipe2`, `tcsetattr` for the SIGWINCH/SIGTERM self-pipe and raw-mode guard | planned (Phase B) |
 
 `clap` is intentionally **not** in this set: the entire CLI
 surface is four cases (no args, `-h/--help`, `-V/--version`,

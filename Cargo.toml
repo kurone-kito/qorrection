@@ -32,6 +32,10 @@ path = "src/bin/q9.rs"
 
 [dependencies]
 thiserror = "1"
+crossterm = "0.28"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 # Pin assert_cmd to the last 2.x compatible with our declared MSRV
