@@ -18,8 +18,11 @@ pub enum Error {
     /// recognize (anything starting with `-` that isn't one of
     /// the four metadata cases).
     ///
-    /// Maps to exit code 2 and is rendered as a usage message on
-    /// stderr by the binary entry point.
+    /// Maps to exit code 2 and is rendered by [`crate::run_from_env`]
+    /// as a one-line stderr diagnostic prefixed with the program
+    /// name (e.g. `qorrection: unknown option: "--bogus"`); the
+    /// actual usage screen is only printed for the dedicated
+    /// `-h`/`--help` cases.
     #[error("unknown option: {0:?}")]
     UnknownOption(OsString),
 
