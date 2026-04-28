@@ -518,7 +518,11 @@ mod tests {
         // SAFETY: SIGTERM's default action is to terminate, but
         // our handler is installed by `install()` above and
         // overrides that, writing one byte to the self-pipe.
-        let rc = unsafe { libc::kill(libc::getpid(), libc::SIGTERM) };
+        // `raise` targets the calling thread in a multithreaded
+        // program, so the signal is delivered here rather than
+        // to an arbitrary parallel test thread whose syscall
+        // would EINTR through no fault of its own.
+        let rc = unsafe { libc::raise(libc::SIGTERM) };
         assert_eq!(rc, 0);
         let mut events = Vec::new();
         for _ in 0..100 {
