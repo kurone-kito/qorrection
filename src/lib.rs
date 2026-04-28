@@ -44,8 +44,8 @@ pub fn run(args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
             Ok(ExitCode::from(2))
         }
         cli::Invocation::Version => {
-            eprintln!("qorrection: version output pending");
-            Ok(ExitCode::from(2))
+            println!("qorrection {}", env!("CARGO_PKG_VERSION"));
+            Ok(ExitCode::SUCCESS)
         }
         cli::Invocation::Wrap { .. } => {
             eprintln!("qorrection: PTY wrap pending");
