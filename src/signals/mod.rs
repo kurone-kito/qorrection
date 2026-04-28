@@ -367,6 +367,14 @@ fn open_self_pipe_impl() -> io::Result<(RawFd, RawFd)> {
 }
 
 fn install_handler(signum: libc::c_int) -> io::Result<libc::sigaction> {
+    #[cfg(test)]
+    {
+        let target = tests::FAIL_INSTALL_FOR.load(Ordering::Acquire);
+        if target == signum {
+            tests::FAIL_INSTALL_FOR.store(0, Ordering::Release);
+            return Err(io::Error::from_raw_os_error(libc::EINVAL));
+        }
+    }
     // SAFETY: zero-initialized sigaction is valid; we fill it
     // before passing to sigaction.
     let mut action: libc::sigaction = unsafe { std::mem::zeroed() };
@@ -462,6 +470,13 @@ mod tests {
     // Singleton install means tests cannot run in parallel.
     // One mutex serializes any test that touches the guard.
     static SERIAL: Mutex<()> = Mutex::new(());
+
+    /// Test-only injection point: when set to a non-zero signal
+    /// number, the next `install_handler` call for that signal
+    /// returns `EINVAL` instead of touching `sigaction`. The
+    /// hook auto-clears on use so a single test cannot poison
+    /// later ones if it forgets to reset it.
+    pub(super) static FAIL_INSTALL_FOR: AtomicI32 = AtomicI32::new(0);
 
     #[test]
     fn decode_known_bytes() {
@@ -578,5 +593,71 @@ mod tests {
         let g = SignalGuard::install().expect("reinstall");
         let events = g.drain().expect("drain");
         assert!(events.is_empty(), "stale wake bytes leaked: {events:?}");
+    }
+
+    #[test]
+    fn sigwinch_install_failure_does_not_poison_cache() {
+        // Regression for the FD-cache publishing bug: if
+        // `install_handler(SIGWINCH)` fails, the freshly opened
+        // pipe is closed and must not be advertised in the
+        // cache. A subsequent successful install must open a
+        // *new* pipe (or reuse a pre-existing valid cached one)
+        // rather than handing the OS-recycled FD numbers to the
+        // I/O loop.
+        let _serial = SERIAL.lock().unwrap();
+        // Drain any cache populated by an earlier test.
+        CACHED_READ_FD.store(-1, Ordering::Release);
+        CACHED_WRITE_FD.store(-1, Ordering::Release);
+
+        FAIL_INSTALL_FOR.store(libc::SIGWINCH, Ordering::Release);
+        let err = SignalGuard::install().expect_err("SIGWINCH install must fail");
+        assert!(
+            matches!(&err, crate::error::Error::Terminal(io_err) if io_err.kind() == io::ErrorKind::InvalidInput),
+            "expected Terminal(InvalidInput), got {err:?}"
+        );
+        assert!(
+            !INSTALLED.load(Ordering::Acquire),
+            "INSTALLED must roll back on failure"
+        );
+        assert_eq!(
+            CACHED_READ_FD.load(Ordering::Acquire),
+            -1,
+            "cache must not retain closed FDs after SIGWINCH failure"
+        );
+        assert_eq!(CACHED_WRITE_FD.load(Ordering::Acquire), -1);
+
+        // Sanity: a subsequent install succeeds and opens a fresh pipe.
+        let g = SignalGuard::install().expect("recovery install");
+        assert!(g.read_fd >= 0 && g.write_fd >= 0);
+    }
+
+    #[test]
+    fn sigterm_install_failure_caches_pipe_for_reuse() {
+        // Regression: if SIGTERM install fails after SIGWINCH
+        // succeeded, the pipe must stay open (in-flight handler
+        // safety) AND must be cached, so the next install
+        // reuses that exact pair instead of leaking another.
+        let _serial = SERIAL.lock().unwrap();
+        CACHED_READ_FD.store(-1, Ordering::Release);
+        CACHED_WRITE_FD.store(-1, Ordering::Release);
+
+        FAIL_INSTALL_FOR.store(libc::SIGTERM, Ordering::Release);
+        let err = SignalGuard::install().expect_err("SIGTERM install must fail");
+        assert!(
+            matches!(&err, crate::error::Error::Terminal(io_err) if io_err.kind() == io::ErrorKind::InvalidInput),
+            "expected Terminal(InvalidInput), got {err:?}"
+        );
+        assert!(!INSTALLED.load(Ordering::Acquire));
+        let cached_r = CACHED_READ_FD.load(Ordering::Acquire);
+        let cached_w = CACHED_WRITE_FD.load(Ordering::Acquire);
+        assert!(
+            cached_r >= 0 && cached_w >= 0,
+            "pipe must be cached after SIGTERM failure: r={cached_r} w={cached_w}"
+        );
+
+        // The next successful install reuses the cached pair.
+        let g = SignalGuard::install().expect("recovery install");
+        assert_eq!(g.read_fd, cached_r);
+        assert_eq!(g.write_fd, cached_w);
     }
 }
