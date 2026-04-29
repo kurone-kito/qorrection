@@ -100,7 +100,13 @@ fn portable_pty_echoes_hi() {
 
     let captured = match rx.recv_timeout(READ_BUDGET) {
         Ok(Ok(bytes)) => bytes,
-        Ok(Err(e)) => panic!("pty read failed: {e}"),
+        Ok(Err(e)) => {
+            // Best-effort kill: the read failed but the child may
+            // still be running, so don't leave a stray process
+            // for the rest of the test binary.
+            let _ = killer.kill();
+            panic!("pty read failed: {e}");
+        }
         Err(_) => {
             // Best-effort: try to unblock the reader so the OS
             // eventually reaps the thread. We deliberately do NOT
@@ -115,8 +121,9 @@ fn portable_pty_echoes_hi() {
     };
     // Successful path: the reader has already sent on the
     // channel and is about to return, so this join completes
-    // immediately and surfaces any panic.
-    let _ = reader_thread.join();
+    // immediately. Propagate any panic so reader bugs don't
+    // hide behind a discarded `Result`.
+    reader_thread.join().expect("reader thread panicked");
 
     // Bounded wait for the child instead of blocking forever.
     let wait_deadline = Instant::now() + WAIT_BUDGET;
@@ -130,7 +137,12 @@ fn portable_pty_echoes_hi() {
                 }
                 thread::sleep(WAIT_POLL);
             }
-            Err(e) => panic!("child wait failed: {e}"),
+            Err(e) => {
+                // Best-effort kill so a wait-syscall failure does
+                // not leak the child process.
+                let _ = killer.kill();
+                panic!("child wait failed: {e}");
+            }
         }
     };
     assert!(status.success(), "child exited non-zero: {status:?}");
