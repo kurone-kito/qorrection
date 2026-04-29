@@ -27,6 +27,12 @@ ignorePaths:
   - target/**
 ignoreRegExpList:
   - kuroné?
+  # Ignore the entire Unicode fullwidth/halfwidth forms block.
+  # Used by arming policy negative-test fixtures (e.g. ｃｌａｕｄｅ)
+  # which intentionally must not arm. The next directive
+  # silences cspell on the regex literal itself, which would
+  # otherwise flag the embedded "uffef" token. cspell directives
+  # are honoured when cspell lints this YAML file as content.
   # cspell:disable-next-line
   - '[\uff00-\uffef]+'
 language: en,ja
