@@ -10,15 +10,21 @@
 //! 3. read the child's output without blocking forever, and
 //! 4. observe a clean exit.
 //!
-//! Reads are bounded (max iterations + a wall-clock budget) so
-//! the test fails fast on regression rather than hanging CI.
+//! All blocking calls (PTY `read`, child `wait`) are wrapped in
+//! a deadline-driven loop so the test fails fast on regression
+//! rather than hanging CI. If the deadline fires we kill the
+//! child via the cross-thread `ChildKiller` handle and panic
+//! with a diagnostic.
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::Read;
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 const READ_BUDGET: Duration = Duration::from_secs(5);
-const MAX_READ_ITERATIONS: usize = 64;
+const WAIT_BUDGET: Duration = Duration::from_secs(5);
+const WAIT_POLL: Duration = Duration::from_millis(20);
 
 #[test]
 fn portable_pty_echoes_hi() {
@@ -49,6 +55,11 @@ fn portable_pty_echoes_hi() {
 
     let mut child = pair.slave.spawn_command(cmd).expect("spawn echo child");
 
+    // Cross-thread kill handle: lets the main thread terminate
+    // the child if the deadline fires while a reader thread is
+    // blocked on `read`, instead of hanging CI forever.
+    let mut killer = child.clone_killer();
+
     // The slave handle is owned by the spawned child; drop our
     // local copy so the master's read can observe EOF when the
     // child exits.
@@ -57,22 +68,56 @@ fn portable_pty_echoes_hi() {
     let mut reader = pair.master.try_clone_reader().expect("clone master reader");
     drop(pair.master);
 
-    let mut captured = Vec::new();
-    let mut buf = [0u8; 256];
-    let deadline = Instant::now() + READ_BUDGET;
-    for _ in 0..MAX_READ_ITERATIONS {
-        if Instant::now() >= deadline {
-            break;
+    // Drain the master in a worker thread. Blocking `read` is
+    // fine here because the main thread enforces the deadline
+    // and will kill the child to unblock us.
+    let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>();
+    let reader_thread = thread::spawn(move || {
+        let mut captured = Vec::new();
+        let mut buf = [0u8; 256];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => captured.extend_from_slice(&buf[..n]),
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => {
+                    let _ = tx.send(Err(e));
+                    return;
+                }
+            }
         }
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => captured.extend_from_slice(&buf[..n]),
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => panic!("pty read failed: {e}"),
-        }
-    }
+        let _ = tx.send(Ok(captured));
+    });
 
-    let status = child.wait().expect("child wait");
+    let captured = match rx.recv_timeout(READ_BUDGET) {
+        Ok(Ok(bytes)) => bytes,
+        Ok(Err(e)) => panic!("pty read failed: {e}"),
+        Err(_) => {
+            let _ = killer.kill();
+            // Best-effort join so we do not leak the thread.
+            let _ = reader_thread.join();
+            panic!("pty read did not finish within {READ_BUDGET:?}");
+        }
+    };
+    // We already received from the channel, so the reader thread
+    // is done; join it to surface any panic and keep things tidy.
+    let _ = reader_thread.join();
+
+    // Bounded wait for the child instead of blocking forever.
+    let wait_deadline = Instant::now() + WAIT_BUDGET;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) => {
+                if Instant::now() >= wait_deadline {
+                    let _ = killer.kill();
+                    panic!("child did not exit within {WAIT_BUDGET:?}");
+                }
+                thread::sleep(WAIT_POLL);
+            }
+            Err(e) => panic!("child wait failed: {e}"),
+        }
+    };
     assert!(status.success(), "child exited non-zero: {status:?}");
 
     let captured_str = String::from_utf8_lossy(&captured);
