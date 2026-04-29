@@ -93,14 +93,20 @@ fn portable_pty_echoes_hi() {
         Ok(Ok(bytes)) => bytes,
         Ok(Err(e)) => panic!("pty read failed: {e}"),
         Err(_) => {
+            // Best-effort: try to unblock the reader so the OS
+            // eventually reaps the thread. We deliberately do NOT
+            // join() here because the whole point of this branch
+            // is that the reader is stuck in a syscall that may
+            // never return; an unbounded join would re-introduce
+            // the hang this timeout exists to prevent. The thread
+            // is detached and will be cleaned up at process exit.
             let _ = killer.kill();
-            // Best-effort join so we do not leak the thread.
-            let _ = reader_thread.join();
             panic!("pty read did not finish within {READ_BUDGET:?}");
         }
     };
-    // We already received from the channel, so the reader thread
-    // is done; join it to surface any panic and keep things tidy.
+    // Successful path: the reader has already sent on the
+    // channel and is about to return, so this join completes
+    // immediately and surfaces any panic.
     let _ = reader_thread.join();
 
     // Bounded wait for the child instead of blocking forever.
