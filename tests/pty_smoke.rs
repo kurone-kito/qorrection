@@ -69,19 +69,17 @@ fn portable_pty_echoes_hi() {
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().expect("clone master reader");
-    // The smoke command does not need stdin; release the writer
-    // immediately so we are not implicitly holding it.
-    drop(pair.master.take_writer().expect("take master writer"));
-    // NOTE: `pair.master` is intentionally held until after the
-    // child has exited. On Windows, dropping the master closes
-    // the underlying ConPTY pseudoconsole handle, which can race
-    // with the child process startup and surface as
-    // `STATUS_DLL_INIT_FAILED` (0xC0000142). Equally important on
-    // Windows: the reader cloned above does NOT observe EOF
-    // simply because the child exits — the ConPTY only signals
-    // EOF once the master itself is closed. We therefore wait
-    // for the child first, then drop the master to release the
-    // reader (the order Unix is also happy with).
+    // NOTE: do NOT pull the writer out of the master and drop
+    // it on Windows. Closing just the writer half of a ConPTY
+    // master can be observed by the child as a Ctrl-C / break
+    // and surface as `STATUS_CONTROL_C_EXIT` (0xC000013A) —
+    // `cmd /C echo hi` then exits non-zero before its output is
+    // even written. We instead hold the entire master alive
+    // (writer + reader halves together) until after the bounded
+    // child wait completes, then drop it as a unit so the
+    // reader receives EOF (the ConPTY only signals EOF on the
+    // read side once the master is fully closed). Unix is
+    // tolerant either way.
     let mut master = Some(pair.master);
 
     // Drain the master in a worker thread. Blocking `read` is
