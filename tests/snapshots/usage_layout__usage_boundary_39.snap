@@ -2,7 +2,7 @@
 source: tests/usage_layout.rs
 expression: render(39)
 ---
-qorrection 0.0.0
+qorrection 0.1.0-alpha.0
 qorrection: PTY wrapper that intercepts Vim-style quit commands
 and dispatches FI-FO-FI-FO ambulance gags.
 

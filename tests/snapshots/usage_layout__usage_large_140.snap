@@ -2,7 +2,7 @@
 source: tests/usage_layout.rs
 expression: render(140)
 ---
-       __________________                       qorrection 0.0.0
+       __________________                       qorrection 0.1.0-alpha.0
       /   +    +    +    \____                  qorrection: PTY wrapper that intercepts Vim-style quit commands
      /     WRITE QUEUE         \                and dispatches FI-FO-FI-FO ambulance gags.
     /    418 I'm an AI agent    \
