@@ -144,7 +144,7 @@ body:
 
         **Blocks:** _(none)_
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: notes
@@ -179,4 +179,4 @@ body:
         3. The PR moves the issue to `status/in-review`.
         4. Always rebase onto `main`; never merge into the feature branch.
     validations:
-      required: false
+      required: true
