@@ -173,7 +173,9 @@ body:
 
         1. Self-assign and add the `status/in-progress` label (remove
            `status/ready` or `status/blocked`).
-        2. Open a PR referencing this issue (`Closes #N`).
+        2. Open a PR referencing this issue using its actual
+           number, for example `Closes #123` (replace `#123` with
+           the number GitHub assigned to this issue).
         3. The PR moves the issue to `status/in-review`.
         4. Always rebase onto `main`; never merge into the feature branch.
     validations:
