@@ -54,10 +54,7 @@ fn portable_pty_echoes_hi() {
     // child exits.
     drop(pair.slave);
 
-    let mut reader = pair
-        .master
-        .try_clone_reader()
-        .expect("clone master reader");
+    let mut reader = pair.master.try_clone_reader().expect("clone master reader");
     drop(pair.master);
 
     let mut captured = Vec::new();
