@@ -27,7 +27,7 @@ ignorePaths:
   - target/**
 ignoreRegExpList:
   - kuroné?
-  # Fullwidth Unicode lookalike used in arming negative tests
+  # cspell:disable-next-line
   - '[\uff00-\uffef]+'
 language: en,ja
 useGitignore: true
