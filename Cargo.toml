@@ -57,6 +57,15 @@ assert_cmd = "=2.0.17"
 predicates = "3"
 insta = "1"
 
+# `rexpect` powers the Unix-only PTY end-to-end suite. Pin to
+# `=0.6.3`: starting with `0.6.4`, upstream raised
+# `rust-version` to 1.85, which collides with our declared MSRV
+# (1.78). Lift this pin in lockstep with any future MSRV bump
+# (its own atomic commit per repo policy). See docs/testing.md
+# for the wider rationale around PTY E2E coverage.
+[target.'cfg(unix)'.dev-dependencies]
+rexpect = "=0.6.3"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
