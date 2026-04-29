@@ -162,7 +162,27 @@ mod tests {
         ("", false),
         ("   ", false),
         ("/", false),
-        ("/usr/bin/", false), // Path::file_name returns None
+        // `Path::file_name` strips trailing separators, so
+        // `claude/` and `bin/claude/` arm. This matches what
+        // a shell would resolve before exec, so the matcher
+        // intentionally accepts them.
+        ("claude/", true),
+        ("bin/claude/", true),
+        ("claude/.", true), // `.` final component is normalised away
+        // `Path::file_name` returns None for these.
+        (".", false),
+        ("..", false),
+        // `/usr/bin/` -> file_name "bin" -> not allowlisted.
+        ("/usr/bin/", false),
+        // No trimming of whitespace or newlines: byte-wise match
+        // against the allowlist must fail for these.
+        ("claude\n", false),
+        ("claude ", false),
+        (" claude", false),
+        // Two-dot stem: ".."+strip yields "..claude" or
+        // "..claude.exe" -> stem "..claude" -> not allowlisted.
+        ("..claude", false),
+        ("..claude.exe", false),
         // Unicode lookalikes must NOT match (ASCII-only fold)
         ("\u{ff43}\u{ff4c}\u{ff41}\u{ff55}\u{ff44}\u{ff45}", false), // ｃｌａｕｄｅ
         ("\u{0441}laude", false), // Cyrillic small letter es + 'laude'
@@ -265,6 +285,21 @@ mod tests {
         #[test]
         fn bare_basename_arms() {
             assert!(is_armed(&wide("claude.exe")));
+        }
+
+        #[test]
+        fn nul_only_wide_input_is_rejected() {
+            let raw: Vec<u16> = vec![0];
+            assert!(!is_armed(&OsString::from_wide(&raw)));
+        }
+
+        #[test]
+        fn embedded_nul_in_wide_input_is_rejected() {
+            // "claude" with a NUL spliced in the middle.
+            let raw: Vec<u16> = vec![
+                'c' as u16, 'l' as u16, 'a' as u16, 0, 'u' as u16, 'd' as u16, 'e' as u16,
+            ];
+            assert!(!is_armed(&OsString::from_wide(&raw)));
         }
     }
 }
