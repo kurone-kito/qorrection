@@ -33,6 +33,16 @@ path = "src/bin/q9.rs"
 [dependencies]
 thiserror = "1"
 crossterm = "0.28"
+anyhow = "1"
+portable-pty = "0.9"
+tracing = "0.1"
+# `default-features = false` keeps the dep tree minimal (no
+# `chrono`, no `ansi`, no `tracing-log` bridge). We re-enable
+# only the features we use: `env-filter` for QORRECTION_LOG
+# parsing, `fmt` for the actual subscriber, and `std` is
+# explicit for self-documentation even though it is pulled in
+# transitively by the other two.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
@@ -46,6 +56,16 @@ libc = "0.2"
 assert_cmd = "=2.0.17"
 predicates = "3"
 insta = "1"
+tempfile = "3"
+
+# `rexpect` powers the Unix-only PTY end-to-end suite. Pin to
+# `=0.6.3`: starting with `0.6.4`, upstream raised
+# `rust-version` to 1.85, which collides with our declared MSRV
+# (1.78). Lift this pin in lockstep with any future MSRV bump
+# (its own atomic commit per repo policy). See docs/testing.md
+# for the wider rationale around PTY E2E coverage.
+[target.'cfg(unix)'.dev-dependencies]
+rexpect = "=0.6.3"
 
 [profile.release]
 lto = "thin"
