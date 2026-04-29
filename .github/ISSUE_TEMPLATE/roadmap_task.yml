@@ -1,0 +1,85 @@
+name: 🗺️ Roadmap task
+description: Atomic task tracked under the v0.1 MVP roadmap.
+title: "[<phase>/<area>] <task-id>: <short title>"
+labels:
+  - roadmap
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to file an atomic task that belongs to the
+        published roadmap (see the `roadmap` meta tracking issue).
+
+        For one-off bug reports or feature requests, use the **Bug
+        report** or **Feature request** templates instead.
+
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      description: Stable kebab-case identifier used in the roadmap and SQL plan.
+      placeholder: e.g. pty-spawn-child
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One or two sentences describing what done looks like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Background
+      description: Links to spec, related files, or prior decisions.
+      placeholder: |
+        - `src/cli/arming.rs:5`
+        - README "Triggers (locked policy)" section
+    validations:
+      required: false
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of Done
+      description: Concrete checklist that an agent can use to self-verify.
+      value: |
+        - [ ] Implementation complete
+        - [ ] Unit / integration / E2E tests added or updated
+        - [ ] `cargo fmt --check` passes
+        - [ ] `cargo clippy --all-targets -- -D warnings` passes
+        - [ ] `cargo test --all-targets --all-features` passes
+        - [ ] Rubber-duck self-review pass complete (for non-trivial changes)
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: |
+        List blocking and dependent tasks. GitHub will autolink `#N`
+        references; once all blockers are closed this issue becomes
+        ready for an agent to claim.
+      value: |
+        Blocked by:
+        - (none)
+
+        Blocks:
+        - (none)
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes for AI agents
+      description: |
+        Spec lock pointers, decisions to honor, gotchas, etc. Useful
+        when multiple agents (Copilot CLI, Claude Code, Codex,
+        Gemini) may pick this up.
+    validations:
+      required: false
