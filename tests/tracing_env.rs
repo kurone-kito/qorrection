@@ -1,12 +1,24 @@
 //! Subprocess tests for `QORRECTION_LOG` gating.
 //!
-//! These run the shipped binary twice (once with the env var
-//! unset, once with it set to `info`) and assert that the
-//! wrapper itself remains silent when the var is unset and emits
-//! a `tracing` formatter line on stderr when set. Subprocess
-//! isolation is required because `tracing::subscriber::
-//! set_global_default` mutates process-global state and cannot
-//! be reset between in-process tests.
+//! These run the shipped binary as a subprocess and assert that
+//! the wrapper stays silent on stderr in two "diagnostics off"
+//! configurations:
+//!
+//! 1. `QORRECTION_LOG` is unset (the default), and
+//! 2. `QORRECTION_LOG` is set to a syntactically invalid filter,
+//!    which must degrade to silence rather than spamming a
+//!    parser error into the wrapped session.
+//!
+//! A positive case (`QORRECTION_LOG=info` actually emitting a
+//! `tracing` line) lands together with the first real diagnostic
+//! call site in Phase 1; without it there is nothing for the
+//! subscriber to log, so asserting on incidental output here
+//! would be flaky.
+//!
+//! Subprocess isolation is required because
+//! `tracing::subscriber::set_global_default` mutates
+//! process-global state and cannot be reset between in-process
+//! tests.
 
 use assert_cmd::Command;
 
