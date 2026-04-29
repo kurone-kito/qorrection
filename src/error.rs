@@ -47,12 +47,13 @@ pub enum Error {
     /// should not collide with code `2`.
     ///
     /// `Display` uses the alternate (`{:#}`) anyhow format so the
-    /// full source chain appears in the rendered message; this
-    /// stands in for the `Error::source()` integration that
-    /// thiserror cannot synthesize for `anyhow::Error` (which is
-    /// not itself a `std::error::Error`).
+    /// full source chain appears in the rendered message on a
+    /// single line. `#[source]` additionally exposes the wrapped
+    /// `anyhow::Error` through [`std::error::Error::source`] so
+    /// downstream diagnostics can walk the underlying cause chain
+    /// the same way they can for [`Self::Terminal`].
     #[error("PTY backend failure: {0:#}")]
-    Pty(anyhow::Error),
+    Pty(#[source] anyhow::Error),
 
     /// Failed to spawn the wrapped child process (`execvp` /
     /// `CreateProcess` failed). The wrapped [`std::io::Error`]
@@ -179,6 +180,27 @@ mod tests {
             .source()
             .expect("Spawn must expose its io::Error as source");
         assert!(source.downcast_ref::<io::Error>().is_some());
+    }
+
+    #[test]
+    fn pty_exposes_anyhow_chain_via_source() {
+        use std::error::Error as _;
+        let inner = anyhow::anyhow!("openpty failed").context("could not start PTY");
+        let err = Error::Pty(inner);
+        // anyhow::Error is not itself a std::error::Error but it
+        // derefs to one, so thiserror's #[source] still wires the
+        // chain into Error::source(). Walking the chain must reach
+        // the innermost cause ("openpty failed").
+        let mut cur: Option<&(dyn std::error::Error + 'static)> = err.source();
+        let mut messages = Vec::new();
+        while let Some(c) = cur {
+            messages.push(c.to_string());
+            cur = c.source();
+        }
+        assert!(
+            messages.iter().any(|m| m.contains("openpty failed")),
+            "Pty source chain must reach inner cause; got {messages:?}"
+        );
     }
 
     #[test]
