@@ -34,6 +34,7 @@ path = "src/bin/q9.rs"
 thiserror = "1"
 crossterm = "0.28"
 anyhow = "1"
+portable-pty = "0.9"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

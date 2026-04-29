@@ -17,7 +17,7 @@ code land together.
 | `thiserror` | Crate-level `Error` enum at the library boundary | added |
 | `crossterm` | ANSI / TUI primitives, cursor control, raw mode, terminal size | added |
 | `libc` (Unix only) | `sigaction`, `pipe2`, `tcsetattr` for the SIGWINCH/SIGTERM self-pipe and raw-mode guard. Gated to `[target.'cfg(unix)'.dependencies]` so Windows builds skip it entirely. | added |
-| `portable-pty` | Cross-platform PTY spawning (Unix PTY + Windows ConPTY) | planned (Phase E) |
+| `portable-pty` | Cross-platform PTY spawning (Unix PTY + Windows ConPTY) | added |
 | `anyhow` | Carry `portable-pty`'s `anyhow::Error` results without losing the source chain at the crate `Error` boundary | added |
 | `tracing` + `tracing-subscriber` | Optional structured diagnostics, gated by `QORRECTION_LOG` | planned (Phase E) |
 
