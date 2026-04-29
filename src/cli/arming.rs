@@ -17,8 +17,12 @@
 //!   with a single `.exe` / `.cmd` / `.bat` suffix stripped if
 //!   present (case-insensitive on the suffix), then compared
 //!   ASCII case-insensitively against the allowlist.
-//! - Comparison is **byte-wise**: full-width Unicode lookalikes
-//!   (`ｃｌａｕｄｅ`) and Cyrillic homoglyphs do **not** arm.
+//!   - Comparison is **byte-wise**: full-width Unicode lookalikes
+//!     (`ｃｌａｕｄｅ`) and Cyrillic homoglyphs do **not** arm.
+//!     There is **no** Unicode normalisation, no locale-aware
+//!     case folding, and no whitespace trimming -- the input is
+//!     compared exactly as the user typed it (after basename and
+//!     extension handling described above).
 //!
 //! [meta issue #11]: https://github.com/kurone-kito/qorrection/issues/11
 //!
