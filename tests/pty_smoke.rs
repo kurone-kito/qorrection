@@ -15,6 +15,16 @@
 //! rather than hanging CI. If the deadline fires we kill the
 //! child via the cross-thread `ChildKiller` handle and panic
 //! with a diagnostic.
+//!
+//! ## Windows
+//!
+//! The test is `#[ignore]` on Windows: ConPTY's stdin-closure
+//! and reaping semantics conflict at the smoke level (closing
+//! the master writer triggers `STATUS_CONTROL_C_EXIT` on
+//! `cmd /C echo hi`, while keeping it open prevents `try_wait`
+//! from observing exit). The real wrapper handles this with an
+//! explicit termination protocol in Phase 1+. Tracking issue:
+//! <https://github.com/kurone-kito/qorrection/issues/84>.
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::Read;
@@ -27,6 +37,10 @@ const WAIT_BUDGET: Duration = Duration::from_secs(5);
 const WAIT_POLL: Duration = Duration::from_millis(20);
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "Windows ConPTY drain/exit semantics for this dep smoke are tracked by issue #84; the real wrapper (Phase 1+) revisits the protocol."
+)]
 fn portable_pty_echoes_hi() {
     let pty_system = native_pty_system();
     let pair = pty_system
