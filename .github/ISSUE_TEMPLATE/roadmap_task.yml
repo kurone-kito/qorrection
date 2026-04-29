@@ -3,12 +3,21 @@ description: Atomic task tracked under the v0.1 MVP roadmap.
 title: "[<phase>/<area>] <task-id>: <short title>"
 labels:
   - roadmap
+  - agent-claimable
 body:
   - type: markdown
     attributes:
       value: |
         Use this template to file an atomic task that belongs to the
-        published roadmap (see the `roadmap` meta tracking issue).
+        v0.1 MVP roadmap (meta tracking issue: #11). The form mirrors
+        the canonical shape used by the bootstrapped task issues
+        (#12 – #80) so triage and AI-agent automation stay uniform.
+
+        > **Before submitting:** replace the prefilled issue title
+        > scaffold (`[<phase>/<area>] <task-id>: <short title>`) with
+        > real values matching the Phase / Area / Task ID you select
+        > below. A title left as the literal scaffold will be
+        > rejected during triage.
 
         For one-off bug reports or feature requests, use the **Bug
         report** or **Feature request** templates instead.
@@ -17,8 +26,66 @@ body:
     id: task_id
     attributes:
       label: Task ID
-      description: Stable kebab-case identifier used in the roadmap and SQL plan.
+      description: Stable kebab-case identifier used in the roadmap and dependency references.
       placeholder: e.g. pty-spawn-child
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: Which roadmap phase does this task belong to?
+      options:
+        - "0 — deps & version policy"
+        - "1 — arming policy"
+        - "2 — PTY pass-through"
+        - "3 — input/output pump"
+        - "4 — animation renderer"
+        - "5 — trigger × anim wiring (MVP playable)"
+        - "6 — signals & shutdown"
+        - "7 — Windows minimal"
+        - "8 — test hardening"
+        - "9 — docs & release"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - pty
+        - anim
+        - cli
+        - trigger
+        - signals
+        - term
+        - test
+        - release
+        - docs
+        - deps
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - impl
+        - test
+        - dep
+        - release-gate
+    validations:
+      required: true
+
+  - type: input
+    id: tracked_in
+    attributes:
+      label: Tracked in
+      description: Parent meta tracking issue (defaults to the v0.1 roadmap).
+      value: "#11"
     validations:
       required: true
 
@@ -81,5 +148,27 @@ body:
         Spec lock pointers, decisions to honor, gotchas, etc. Useful
         when multiple agents (Copilot CLI, Claude Code, Codex,
         Gemini) may pick this up.
+      value: |
+        - Project uses GitHub Flow + Conventional Commits + signed commits.
+        - Allowlist for arming is fixed (not configurable): copilot, codex,
+          claude, aichat, gemini, qwen, ollama.
+        - tracing env: `QORRECTION_LOG` (NOT `RUST_LOG`).
+        - See the meta tracking issue (#11) for full spec lock and approach.
+    validations:
+      required: false
+
+  - type: textarea
+    id: claim_protocol
+    attributes:
+      label: Claim protocol
+      description: Pre-filled — agents should follow these steps when claiming this issue.
+      value: |
+        When you start work on this issue:
+
+        1. Self-assign and add the `status/in-progress` label (remove
+           `status/ready` or `status/blocked`).
+        2. Open a PR referencing this issue (`Closes #N`).
+        3. The PR moves the issue to `status/in-review`.
+        4. Always rebase onto `main`; never merge into the feature branch.
     validations:
       required: false
