@@ -1,0 +1,182 @@
+name: 🗺️ Roadmap task
+description: Atomic task tracked under the v0.1 MVP roadmap.
+title: "[<phase>/<area>] <task-id>: <short title>"
+labels:
+  - roadmap
+  - agent-claimable
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to file an atomic task that belongs to the
+        v0.1 MVP roadmap (meta tracking issue: #11). The form
+        captures the **same canonical fields** as the bootstrapped
+        task issues (#12 – #80) — Task ID, Phase, Area, Kind, Goal,
+        Definition of Done, Dependencies, and Claim protocol — so
+        triage and AI-agent automation stay uniform.
+
+        > **Note on rendered shape:** GitHub issue forms render each
+        > field as its own `### Label` section, so the submitted body
+        > will look slightly different from the inline metadata
+        > header used by the bootstrapped issues. The information
+        > content is identical; only the visual layout differs.
+
+        > **Before submitting:** replace the prefilled issue title
+        > scaffold (`[<phase>/<area>] <task-id>: <short title>`) with
+        > real values matching the Phase / Area / Task ID you select
+        > below. A title left as the literal scaffold will be
+        > rejected during triage.
+
+        For one-off bug reports or feature requests, use the **Bug
+        report** or **Feature request** templates instead.
+
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      description: Stable kebab-case identifier used in the roadmap and dependency references.
+      placeholder: e.g. pty-spawn-child
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: Which roadmap phase does this task belong to?
+      options:
+        - "0 — deps & version policy"
+        - "1 — arming policy"
+        - "2 — PTY pass-through"
+        - "3 — input/output pump"
+        - "4 — animation renderer"
+        - "5 — trigger × anim wiring (MVP playable)"
+        - "6 — signals & shutdown"
+        - "7 — Windows minimal"
+        - "8 — test hardening"
+        - "9 — docs & release"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - pty
+        - anim
+        - cli
+        - trigger
+        - signals
+        - term
+        - test
+        - release
+        - docs
+        - deps
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - impl
+        - test
+        - dep
+        - release-gate
+    validations:
+      required: true
+
+  - type: input
+    id: tracked_in
+    attributes:
+      label: Tracked in
+      description: Parent meta tracking issue (defaults to the v0.1 roadmap).
+      value: "#11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One or two sentences describing what done looks like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Background
+      description: Links to spec, related files, or prior decisions.
+      placeholder: |
+        - `src/cli/arming.rs:5`
+        - README "Triggers (locked policy)" section
+    validations:
+      required: false
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of Done
+      description: Concrete checklist that an agent can use to self-verify.
+      value: |
+        - [ ] Implementation complete
+        - [ ] Unit / integration / E2E tests added or updated
+        - [ ] `cargo fmt --check` passes
+        - [ ] `cargo clippy --all-targets -- -D warnings` passes
+        - [ ] `cargo test --all-targets --all-features` passes
+        - [ ] Rubber-duck self-review pass complete (for non-trivial changes)
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: |
+        List blocking and dependent tasks. GitHub will autolink `#N`
+        references; once all blockers are closed this issue becomes
+        ready for an agent to claim.
+      value: |
+        **Blocked by:** _(none)_
+
+        **Blocks:** _(none)_
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes for AI agents
+      description: |
+        Spec lock pointers, decisions to honor, gotchas, etc. Useful
+        when multiple agents (Copilot CLI, Claude Code, Codex,
+        Gemini) may pick this up.
+      value: |
+        - Project uses GitHub Flow + Conventional Commits + signed commits.
+        - Allowlist for arming is fixed (not configurable): copilot, codex,
+          claude, aichat, gemini, qwen, ollama.
+        - tracing env: `QORRECTION_LOG` (NOT `RUST_LOG`).
+        - See the meta tracking issue (#11) for full spec lock and approach.
+    validations:
+      required: false
+
+  - type: textarea
+    id: claim_protocol
+    attributes:
+      label: Claim protocol
+      description: Pre-filled — agents should follow these steps when claiming this issue.
+      value: |
+        When you start work on this issue:
+
+        1. Self-assign and add the `status/in-progress` label (remove
+           `status/ready` or `status/blocked`).
+        2. Open a PR referencing this issue using its actual
+           number, for example `Closes #123` (replace `#123` with
+           the number GitHub assigned to this issue).
+        3. The PR moves the issue to `status/in-review`.
+        4. Always rebase onto `main`; never merge into the feature branch.
+    validations:
+      required: true
