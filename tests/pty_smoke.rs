@@ -72,17 +72,21 @@ fn portable_pty_echoes_hi() {
     // The smoke command does not need stdin; release the writer
     // immediately so we are not implicitly holding it.
     drop(pair.master.take_writer().expect("take master writer"));
-    // NOTE: `pair.master` is intentionally NOT dropped here.
-    // On Windows, dropping the master closes the underlying
-    // ConPTY pseudoconsole handle, which can race with the child
-    // process startup and surface as `STATUS_DLL_INIT_FAILED`
-    // (0xC0000142). We hold the master until after the child has
-    // exited (see drop near the bottom of the test), then drop
-    // it so the reader observes EOF.
+    // NOTE: `pair.master` is intentionally held until after the
+    // child has exited. On Windows, dropping the master closes
+    // the underlying ConPTY pseudoconsole handle, which can race
+    // with the child process startup and surface as
+    // `STATUS_DLL_INIT_FAILED` (0xC0000142). Equally important on
+    // Windows: the reader cloned above does NOT observe EOF
+    // simply because the child exits — the ConPTY only signals
+    // EOF once the master itself is closed. We therefore wait
+    // for the child first, then drop the master to release the
+    // reader (the order Unix is also happy with).
+    let mut master = Some(pair.master);
 
     // Drain the master in a worker thread. Blocking `read` is
     // fine here because the main thread enforces the deadline
-    // and will kill the child to unblock us.
+    // and will kill the child / drop the master to unblock us.
     let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>();
     let reader_thread = thread::spawn(move || {
         let mut captured = Vec::new();
@@ -101,12 +105,43 @@ fn portable_pty_echoes_hi() {
         let _ = tx.send(Ok(captured));
     });
 
+    // Bounded wait for the child first. The reader thread is
+    // still draining whatever the child wrote into the PTY; we
+    // close the master afterwards to make the reader see EOF.
+    let wait_deadline = Instant::now() + WAIT_BUDGET;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) => {
+                if Instant::now() >= wait_deadline {
+                    let _ = killer.kill();
+                    drop(master.take());
+                    panic!("child did not exit within {WAIT_BUDGET:?}");
+                }
+                thread::sleep(WAIT_POLL);
+            }
+            Err(e) => {
+                // Best-effort kill + master release so a
+                // wait-syscall failure does not leak the child
+                // process or strand the reader thread.
+                let _ = killer.kill();
+                drop(master.take());
+                panic!("child wait failed: {e}");
+            }
+        }
+    };
+
+    // Child has exited; closing the master signals EOF to the
+    // reader on Windows (Unix is tolerant either way).
+    drop(master.take());
+
     let captured = match rx.recv_timeout(READ_BUDGET) {
         Ok(Ok(bytes)) => bytes,
         Ok(Err(e)) => {
             // Best-effort kill: the read failed but the child may
-            // still be running, so don't leave a stray process
-            // for the rest of the test binary.
+            // still be running (in pathological cases where
+            // try_wait reported exit but a sibling process kept
+            // the slave fd open).
             let _ = killer.kill();
             panic!("pty read failed: {e}");
         }
@@ -128,26 +163,6 @@ fn portable_pty_echoes_hi() {
     // hide behind a discarded `Result`.
     reader_thread.join().expect("reader thread panicked");
 
-    // Bounded wait for the child instead of blocking forever.
-    let wait_deadline = Instant::now() + WAIT_BUDGET;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) => {
-                if Instant::now() >= wait_deadline {
-                    let _ = killer.kill();
-                    panic!("child did not exit within {WAIT_BUDGET:?}");
-                }
-                thread::sleep(WAIT_POLL);
-            }
-            Err(e) => {
-                // Best-effort kill so a wait-syscall failure does
-                // not leak the child process.
-                let _ = killer.kill();
-                panic!("child wait failed: {e}");
-            }
-        }
-    };
     assert!(status.success(), "child exited non-zero: {status:?}");
 
     let captured_str = String::from_utf8_lossy(&captured);
@@ -155,8 +170,4 @@ fn portable_pty_echoes_hi() {
         captured_str.contains("hi"),
         "expected 'hi' in pty output, got: {captured_str:?}"
     );
-
-    // Now that the child has fully exited it is safe to drop
-    // the master and let any remaining I/O resources release.
-    drop(pair.master);
 }
