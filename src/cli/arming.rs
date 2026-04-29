@@ -218,6 +218,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn every_allowlisted_command_accepts_strippable_suffixes() {
+        // Generic guard: each allowlist entry must arm with every
+        // strippable suffix in any ASCII case. Catches regressions
+        // where a refactor accidentally special-cases one entry.
+        for entry in [
+            "copilot", "codex", "claude", "aichat", "gemini", "qwen", "ollama",
+        ] {
+            for suffix in [".exe", ".cmd", ".bat", ".EXE", ".Cmd", ".BAT"] {
+                let command = format!("{entry}{suffix}");
+                assert!(
+                    is_armed(OsStr::new(&command)),
+                    "{command:?} should arm via suffix strip"
+                );
+            }
+        }
+    }
+
     #[cfg(unix)]
     mod unix {
         use super::is_armed;
@@ -258,6 +276,18 @@ mod tests {
             // strip + ASCII fold should still arm.
             let raw: &[u8] = b"\xff\xfe/claude.EXE";
             assert!(is_armed(OsStr::from_bytes(raw)));
+        }
+
+        #[test]
+        fn windows_backslash_path_does_not_arm_on_unix() {
+            // On Unix, backslash is an ordinary byte, not a path
+            // separator. Documented in the module: native semantics
+            // mean these strings have no separator at all so the
+            // entire string is the basename, which is not in the
+            // allowlist.
+            assert!(!is_armed(OsStr::new(r"C:\tools\claude.exe")));
+            assert!(!is_armed(OsStr::new(r"bin\claude.exe")));
+            assert!(!is_armed(OsStr::new(r"\claude")));
         }
     }
 
@@ -304,6 +334,22 @@ mod tests {
                 'c' as u16, 'l' as u16, 'a' as u16, 0, 'u' as u16, 'd' as u16, 'e' as u16,
             ];
             assert!(!is_armed(&OsString::from_wide(&raw)));
+        }
+
+        #[test]
+        fn dot_final_component_uses_previous_component_on_windows() {
+            // `Path::file_name` documented behavior also holds on
+            // Windows with backslash separators: a final `.`
+            // component is normalised away so the previous
+            // component is the basename.
+            assert!(is_armed(&wide(r"C:\tools\claude\.")));
+        }
+
+        #[test]
+        fn dot_dot_final_component_does_not_arm_on_windows() {
+            // A final `..` makes the basename `None`, so the
+            // input cannot arm.
+            assert!(!is_armed(&wide(r"C:\tools\claude\..")));
         }
     }
 }
