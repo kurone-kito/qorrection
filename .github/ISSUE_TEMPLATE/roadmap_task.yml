@@ -132,11 +132,9 @@ body:
         references; once all blockers are closed this issue becomes
         ready for an agent to claim.
       value: |
-        Blocked by:
-        - (none)
+        **Blocked by:** _(none)_
 
-        Blocks:
-        - (none)
+        **Blocks:** _(none)_
     validations:
       required: false
 
