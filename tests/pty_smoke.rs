@@ -47,8 +47,11 @@ fn portable_pty_echoes_hi() {
         c.arg("hi");
         c
     };
-    // Avoid inheriting the parent test's CWD when it might not
-    // exist on the worker (rare, but defensive).
+    // Best-effort: anchor the child to a known-readable CWD if
+    // one is available. We only set `cwd` when `current_dir()`
+    // succeeds; if it fails (e.g. the test runner's CWD has been
+    // deleted) we leave `CommandBuilder` to inherit whatever the
+    // parent uses, which is the same as today's default behaviour.
     if let Ok(cwd) = std::env::current_dir() {
         cmd.cwd(cwd);
     }
