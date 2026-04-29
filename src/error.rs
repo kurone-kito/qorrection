@@ -63,7 +63,7 @@ pub enum Error {
     ///   found),
     /// - any other kind → `126` (found but not executable).
     #[error("failed to spawn child process: {0}")]
-    Spawn(std::io::Error),
+    Spawn(#[source] std::io::Error),
 
     /// The wrapped child terminated because of an OS signal.
     /// `signum` is the raw signal number reported by the
@@ -169,6 +169,16 @@ mod tests {
     fn spawn_other_kind_exits_with_126() {
         let err = Error::Spawn(io::Error::other("totally unexpected"));
         assert_eq!(err.exit_code(), 126);
+    }
+
+    #[test]
+    fn spawn_exposes_io_error_as_source() {
+        use std::error::Error as _;
+        let err = Error::Spawn(io::Error::from(io::ErrorKind::NotFound));
+        let source = err
+            .source()
+            .expect("Spawn must expose its io::Error as source");
+        assert!(source.downcast_ref::<io::Error>().is_some());
     }
 
     #[test]
