@@ -32,10 +32,29 @@ command" rule.
 Justify any new dependency in the commit body. Prefer extending
 this set before introducing alternatives.
 
+### Roadmap deps-bundle exception
+
+A pre-approved exception to the "added in the same commit that
+first depends on it" rule applies to **roadmap deps-bundle PRs**
+— PRs whose explicit purpose is to land a coherent batch of
+dependencies for a roadmap phase ahead of the consuming code.
+This trades strict per-commit lockstep for the ability to run
+the audit gate (MSRV `--locked` check + `cargo deny check`) on
+the whole batch in a single PR, and lets downstream feature PRs
+focus on behavior rather than dep churn.
+
+When this exception is used:
+
+- the PR description must enumerate the closed dep issues,
+- each dep still gets its own atomic commit with rationale,
+- the `Status` column in the tables above is flipped to
+  `added` only when the dep actually lands in `Cargo.toml`.
+
 ## Test-only dependencies
 
 `dev-dependencies` follow the same rule (added in lockstep with
-the first commit that uses them). The agreed test set:
+the first commit that uses them, subject to the same roadmap
+deps-bundle exception above). The agreed test set:
 
 | Crate | Purpose | Status |
 | ----- | ------- | ------ |
