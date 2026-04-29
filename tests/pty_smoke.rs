@@ -66,7 +66,16 @@ fn portable_pty_echoes_hi() {
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().expect("clone master reader");
-    drop(pair.master);
+    // The smoke command does not need stdin; release the writer
+    // immediately so we are not implicitly holding it.
+    drop(pair.master.take_writer().expect("take master writer"));
+    // NOTE: `pair.master` is intentionally NOT dropped here.
+    // On Windows, dropping the master closes the underlying
+    // ConPTY pseudoconsole handle, which can race with the child
+    // process startup and surface as `STATUS_DLL_INIT_FAILED`
+    // (0xC0000142). We hold the master until after the child has
+    // exited (see drop near the bottom of the test), then drop
+    // it so the reader observes EOF.
 
     // Drain the master in a worker thread. Blocking `read` is
     // fine here because the main thread enforces the deadline
@@ -131,4 +140,8 @@ fn portable_pty_echoes_hi() {
         captured_str.contains("hi"),
         "expected 'hi' in pty output, got: {captured_str:?}"
     );
+
+    // Now that the child has fully exited it is safe to drop
+    // the master and let any remaining I/O resources release.
+    drop(pair.master);
 }
