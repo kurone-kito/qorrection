@@ -406,6 +406,7 @@ dependencies = [
  "portable-pty",
  "predicates",
  "rexpect",
+ "tempfile",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",

@@ -43,7 +43,7 @@ the first commit that uses them). The agreed test set:
 | `predicates` | Companion matcher library used by `assert_cmd` for stdout/stderr/exit-code assertions | added |
 | `insta` | ANSI byte-stream snapshot tests for animations and the usage screen | added |
 | `rexpect` (Unix only) | Real-PTY end-to-end tests, gated to `[target.'cfg(unix)'.dev-dependencies]` so Windows builds don't pull it transitively | added (`=0.6.3`, MSRV ceiling — see Cargo.toml comment) |
-| `tempfile` | Scratch directories for tests that need a real filesystem | planned (Phase E) |
+| `tempfile` | Scratch directories for tests that need a real filesystem | added |
 
 ## `QORRECTION_LOG` diagnostics policy
 

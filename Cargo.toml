@@ -56,6 +56,7 @@ libc = "0.2"
 assert_cmd = "=2.0.17"
 predicates = "3"
 insta = "1"
+tempfile = "3"
 
 # `rexpect` powers the Unix-only PTY end-to-end suite. Pin to
 # `=0.6.3`: starting with `0.6.4`, upstream raised
