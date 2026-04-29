@@ -27,11 +27,16 @@ ignorePaths:
   - target/**
 ignoreRegExpList:
   - kuroné?
+  # Fullwidth Unicode lookalike used in arming negative tests
+  - '[\uff00-\uffef]+'
 language: en,ja
 useGitignore: true
 version: '0.2'
 words:
   - aichat
+  - clau
+  - claudex
+  - clauder
   - decckm
   - embark
   - greppable
@@ -47,3 +52,4 @@ words:
   - rexpect
   - swatinem
   - toctou
+  - xclaude
