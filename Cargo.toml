@@ -35,6 +35,14 @@ thiserror = "1"
 crossterm = "0.28"
 anyhow = "1"
 portable-pty = "0.9"
+tracing = "0.1"
+# `default-features = false` keeps the dep tree minimal (no
+# `chrono`, no `ansi`, no `tracing-log` bridge). We re-enable
+# only the features we use: `env-filter` for QORRECTION_LOG
+# parsing, `fmt` for the actual subscriber, and `std` is
+# explicit for self-documentation even though it is pulled in
+# transitively by the other two.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -33,6 +33,7 @@ use std::process::ExitCode;
 /// `qorrection: unknown option ...`). Falls back to the crate
 /// name when `argv[0]` is missing or empty.
 pub fn run_from_env() -> ExitCode {
+    init_tracing();
     let mut args = std::env::args_os();
     let argv0 = args.next();
     let prog = program_name(argv0.as_deref());
@@ -43,6 +44,43 @@ pub fn run_from_env() -> ExitCode {
             ExitCode::from(err.exit_code())
         }
     }
+}
+
+/// Install a `tracing` subscriber that consults the
+/// `QORRECTION_LOG` environment variable.
+///
+/// Behavior is intentionally conservative because this binary
+/// runs as a transparent PTY wrapper around an interactive child
+/// process; uninvited stderr output would corrupt the user's
+/// terminal session.
+///
+/// - **`QORRECTION_LOG` unset** → return immediately. The
+///   normal interactive path is completely silent.
+/// - **`QORRECTION_LOG` set but invalid** → also return
+///   silently. We deliberately do not surface filter parser
+///   errors on stderr; an invalid value is treated as
+///   "diagnostics off".
+/// - **`QORRECTION_LOG` set and valid** → install a `fmt`
+///   subscriber emitting on stderr with the parsed filter.
+///   `set_global_default` is best-effort; a second call (which
+///   should not happen in production) becomes a no-op.
+///
+/// Note: stdin bytes from the user and output bytes from the
+/// wrapped child process are **never** logged. Diagnostics are
+/// limited to wrapper-internal events (PTY spawn, signal
+/// forwarding, trigger detection state) added in later phases.
+fn init_tracing() {
+    if std::env::var_os("QORRECTION_LOG").is_none() {
+        return;
+    }
+    let Ok(filter) = tracing_subscriber::EnvFilter::try_from_env("QORRECTION_LOG") else {
+        return;
+    };
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .finish();
+    let _ = tracing::subscriber::set_global_default(subscriber);
 }
 
 /// Derive the diagnostic prefix from `argv[0]`.

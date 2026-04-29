@@ -19,7 +19,7 @@ code land together.
 | `libc` (Unix only) | `sigaction`, `pipe2`, `tcsetattr` for the SIGWINCH/SIGTERM self-pipe and raw-mode guard. Gated to `[target.'cfg(unix)'.dependencies]` so Windows builds skip it entirely. | added |
 | `portable-pty` | Cross-platform PTY spawning (Unix PTY + Windows ConPTY) | added |
 | `anyhow` | Carry `portable-pty`'s `anyhow::Error` results without losing the source chain at the crate `Error` boundary | added |
-| `tracing` + `tracing-subscriber` | Optional structured diagnostics, gated by `QORRECTION_LOG` | planned (Phase E) |
+| `tracing` + `tracing-subscriber` | Optional structured diagnostics, gated by `QORRECTION_LOG` | added |
 
 `clap` is intentionally **not** in this set: the entire CLI
 surface is four cases (no args, `-h/--help`, `-V/--version`,
@@ -44,6 +44,36 @@ the first commit that uses them). The agreed test set:
 | `insta` | ANSI byte-stream snapshot tests for animations and the usage screen | added |
 | `rexpect` (Unix only) | Real-PTY end-to-end tests, gated to `[target.'cfg(unix)'.dev-dependencies]` so Windows builds don't pull it transitively | planned (Phase E) |
 | `tempfile` | Scratch directories for tests that need a real filesystem | planned (Phase E) |
+
+## `QORRECTION_LOG` diagnostics policy
+
+`tracing` is wired through a subscriber installed only when the
+`QORRECTION_LOG` environment variable is set. The variable
+takes a [`tracing-subscriber` `EnvFilter`][envfilter] expression
+(e.g. `info`, `qorrection=debug`).
+
+[envfilter]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+
+- **Unset** → no subscriber installed; the wrapper is silent.
+- **Set but invalid** → silently treated as "diagnostics off"
+  to avoid printing parser noise into the user's interactive
+  terminal session.
+- **Set and valid** → events are written to **stderr** with the
+  parsed filter applied.
+
+The variable is intentionally **`QORRECTION_LOG`**, not
+`RUST_LOG`. We do not piggy-back on `RUST_LOG` because the
+wrapped child process may itself read `RUST_LOG` and we must
+not perturb its environment.
+
+What is **never** logged, regardless of filter level:
+
+- bytes the user types on stdin,
+- bytes the wrapped child writes to its stdout / stderr.
+
+Diagnostics are limited to wrapper-internal events (PTY spawn,
+signal forwarding, trigger detection state). Anything that
+could leak terminal contents stays out of the trace stream.
 
 ## Versioning
 
