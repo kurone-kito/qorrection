@@ -9,9 +9,17 @@ body:
     attributes:
       value: |
         Use this template to file an atomic task that belongs to the
-        v0.1 MVP roadmap (meta tracking issue: #11). The form mirrors
-        the canonical shape used by the bootstrapped task issues
-        (#12 – #80) so triage and AI-agent automation stay uniform.
+        v0.1 MVP roadmap (meta tracking issue: #11). The form
+        captures the **same canonical fields** as the bootstrapped
+        task issues (#12 – #80) — Task ID, Phase, Area, Kind, Goal,
+        Definition of Done, Dependencies, and Claim protocol — so
+        triage and AI-agent automation stay uniform.
+
+        > **Note on rendered shape:** GitHub issue forms render each
+        > field as its own `### Label` section, so the submitted body
+        > will look slightly different from the inline metadata
+        > header used by the bootstrapped issues. The information
+        > content is identical; only the visual layout differs.
 
         > **Before submitting:** replace the prefilled issue title
         > scaffold (`[<phase>/<area>] <task-id>: <short title>`) with
