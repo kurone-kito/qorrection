@@ -1,6 +1,6 @@
 [package]
 name = "qorrection"
-version = "0.0.0"
+version = "0.1.0-alpha.0"
 edition = "2021"
 rust-version = "1.78"
 authors = ["Kuroné Kito (黒音キト) <krone@kit.black>"]
