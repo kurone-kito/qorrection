@@ -171,13 +171,18 @@ impl Drop for KillOnDropGuard {
 /// [`run_pump_session_with`].
 #[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<ExitCode> {
-    let SpawnedSession { child, master: _ } = session;
-    // Drop the master here? No — closing the master prematurely
-    // would EOF the child's PTY. The master must outlive the
-    // child wait. Stash it on the stack so it's dropped only
-    // after this function returns (after the wait).
-    let mut child = PtyChild { child };
-    let _ = &mut child; // explicit lifetime anchor for clarity
+    // Bind the master to a named local so it stays alive for
+    // the entire supervised session. A wildcard (`master: _`)
+    // pattern would drop it immediately at the destructuring
+    // point, EOF'ing the slave side and racing the child / the
+    // forwarder threads. The named binding extends its lifetime
+    // to the end of the function, so the master is dropped only
+    // after `run_pump_session_with` returns.
+    let SpawnedSession {
+        child,
+        master: _master,
+    } = session;
+    let child = PtyChild { child };
     run_pump_session_with(child, pump, Deadlines::production())
 }
 
