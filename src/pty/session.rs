@@ -229,7 +229,8 @@ where
             // Surface kill failure rather than blocking on
             // wait() when the child may be unreachable.
             if let Err(e) = escalate_kill(&mut child) {
-                guard.disarm();
+                // Leave the guard armed: the child is likely
+                // still running and drop() is the last defense.
                 return Err(wrap_io("forwarder failed; kill escalation failed", e));
             }
             let wait_outcome = child.wait();
@@ -255,7 +256,8 @@ where
             // child may be unreachable; surface the error rather
             // than blocking forever.
             if let Err(e) = escalate_kill(&mut child) {
-                guard.disarm();
+                // Leave the guard armed: the child is likely
+                // still running and drop() is the last defense.
                 return Err(wrap_io("stalled supervisor; kill escalation failed", e));
             }
             match child.wait() {
@@ -269,7 +271,8 @@ where
                 // Test-only convergence path: bail by killing
                 // and waiting. Production passes None.
                 if let Err(e) = escalate_kill(&mut child) {
-                    guard.disarm();
+                    // Leave the guard armed: the child is likely
+                    // still running and drop() is the last defense.
                     return Err(wrap_io("deadline reached; kill escalation failed", e));
                 }
                 match child.wait() {
