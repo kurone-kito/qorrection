@@ -225,10 +225,21 @@ where
         let c2h_errored = matches!(c2h_result, Some(Err(_)));
         if h2c_errored || c2h_errored {
             // RD finding 8: forwarder I/O error before the child
-            // exits is unrecoverable. Kill, wait, surface.
-            escalate_kill(&mut child);
-            let _ = child.wait(); // reap, ignore status
-                                  // Pull the actual io::Error out for the Pty wrapper.
+            // exits is unrecoverable. Escalate, wait, surface.
+            // Surface kill failure rather than blocking on
+            // wait() when the child may be unreachable.
+            if let Err(e) = escalate_kill(&mut child) {
+                guard.disarm();
+                return Err(wrap_io("forwarder failed; kill escalation failed", e));
+            }
+            let wait_outcome = child.wait();
+            // The wait succeeded (or definitively failed): the
+            // guard's job is done either way.
+            guard.disarm();
+            if let Err(e) = wait_outcome {
+                tracing::warn!(error = %e, "supervisor: wait() after kill failed");
+            }
+            // Pull the actual io::Error out for the Pty wrapper.
             let err = h2c_result
                 .take()
                 .and_then(|r| r.err())
@@ -239,9 +250,14 @@ where
 
         if h2c_result.is_some() && c2h_result.is_some() {
             // Both forwarders converged while the child is still
-            // alive → no producer, no consumer. Escalate kill
-            // and block on `wait()`.
-            escalate_kill(&mut child);
+            // alive → no producer, no consumer. Escalate and
+            // block on `wait()`. If the kill itself failed, the
+            // child may be unreachable; surface the error rather
+            // than blocking forever.
+            if let Err(e) = escalate_kill(&mut child) {
+                guard.disarm();
+                return Err(wrap_io("stalled supervisor; kill escalation failed", e));
+            }
             match child.wait() {
                 Ok(s) => break s,
                 Err(e) => return Err(wrap_io("child wait after kill", e)),
@@ -252,7 +268,10 @@ where
             if start.elapsed() >= d {
                 // Test-only convergence path: bail by killing
                 // and waiting. Production passes None.
-                escalate_kill(&mut child);
+                if let Err(e) = escalate_kill(&mut child) {
+                    guard.disarm();
+                    return Err(wrap_io("deadline reached; kill escalation failed", e));
+                }
                 match child.wait() {
                     Ok(s) => break s,
                     Err(e) => return Err(wrap_io("child wait after deadline kill", e)),
@@ -283,11 +302,13 @@ fn wrap_io(context: &'static str, e: io::Error) -> Error {
     Error::Pty(anyhow::Error::new(e).context(context))
 }
 
-fn escalate_kill<C: SupervisedChild>(child: &mut C) {
+fn escalate_kill<C: SupervisedChild>(child: &mut C) -> io::Result<()> {
     let mut k = child.clone_killer();
     if let Err(e) = k.kill() {
         tracing::warn!(error = %e, "supervisor: best-effort kill failed");
+        return Err(e);
     }
+    Ok(())
 }
 
 /// Non-blocking peek + extract. If the handle is finished, join
