@@ -114,7 +114,7 @@ pub(crate) fn spawn_child(
     // before handing off to `CommandBuilder`. (RD finding #2.)
     let resolved_command = resolve_command_path(command, &cwd);
 
-    let mut builder = CommandBuilder::new(&resolved_command);
+    let mut builder = CommandBuilder::new(resolved_command);
     for arg in args {
         builder.arg(arg);
     }
@@ -265,16 +265,27 @@ impl std::error::Error for CurrentDirLookupError {
 /// -- still surface from portable-pty via [`map_spawn_error`].
 #[cfg(unix)]
 pub(crate) fn preflight_command(command: &OsStr) -> Result<()> {
-    let path_var = std::env::var_os("PATH").unwrap_or_default();
-    preflight_command_with_path(command, path_var.as_os_str())
+    let path_var = std::env::var_os("PATH");
+    preflight_command_with_optional_path(command, path_var.as_deref())
 }
 
 /// Pure variant: takes the `PATH` value as an argument so tests
 /// can drive PATH-walk classification without mutating the
 /// process-wide environment (which would race with parallel
 /// tests).
-#[cfg(unix)]
+#[cfg(all(unix, test))]
 fn preflight_command_with_path(command: &OsStr, path_var: &OsStr) -> Result<()> {
+    preflight_command_with_optional_path(command, Some(path_var))
+}
+
+/// Pure variant that preserves the distinction between `PATH`
+/// being unset and being set to an empty value. Our
+/// portable-pty-aligned PATH walk only runs when the environment
+/// variable is actually present; if it is absent, a bare command
+/// must classify as `NotFound` instead of accidentally probing the
+/// current directory via an empty synthetic path entry.
+#[cfg(unix)]
+fn preflight_command_with_optional_path(command: &OsStr, path_var: Option<&OsStr>) -> Result<()> {
     use std::os::unix::ffi::OsStrExt;
 
     // An empty command name is never spawnable. Without this
@@ -301,6 +312,12 @@ fn preflight_command_with_path(command: &OsStr, path_var: &OsStr) -> Result<()> 
     if p.is_absolute() || has_sep {
         return classify_path(p, p);
     }
+    let Some(path_var) = path_var else {
+        return Err(Error::Spawn(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("command not found because PATH is unset: {}", p.display()),
+        )));
+    };
 
     // PATH walk. POSIX `execvp` semantics: a candidate that
     // exists but is not executable yields `EACCES` (-> 126),
@@ -470,6 +487,29 @@ mod tests {
                 Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::NotFound),
                 other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
             }
+        }
+
+        #[test]
+        fn preflight_missing_path_for_bare_name_yields_spawn_not_found() {
+            let err = preflight_command_with_optional_path(OsStr::new("sh"), None)
+                .expect_err("should fail");
+            match err {
+                Error::Spawn(io) => {
+                    assert_eq!(io.kind(), io::ErrorKind::NotFound);
+                    let msg = io.to_string();
+                    assert!(
+                        msg.contains("PATH is unset"),
+                        "missing-PATH error should explain the source; got {msg:?}"
+                    );
+                }
+                other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn preflight_missing_path_still_classifies_literal_path() {
+            preflight_command_with_optional_path(OsStr::new("/bin/sh"), None)
+                .expect("/bin/sh must exist on Unix");
         }
 
         #[test]
