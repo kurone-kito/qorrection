@@ -334,6 +334,16 @@ mod tests {
         use std::ffi::CStr;
         for n in 1..=31i32 {
             let name = unsafe {
+                // SAFETY: `libc::strsignal(n)` is a thread-safe
+                // POSIX inquiry returning either a NULL pointer
+                // (handled below) or a pointer to a process- or
+                // thread-local static C string that remains
+                // valid until the next strsignal call on the
+                // same thread. We do not call strsignal again
+                // before consuming the pointer, so the returned
+                // `*const c_char` is valid for `CStr::from_ptr`,
+                // which copies the bytes into an owned String
+                // before the borrow ends.
                 let ptr = libc::strsignal(n);
                 if ptr.is_null() {
                     continue;
