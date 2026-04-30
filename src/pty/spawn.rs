@@ -304,31 +304,56 @@ fn preflight_command_with_path(command: &OsStr, path_var: &OsStr) -> Result<()> 
 
     // PATH walk. POSIX `execvp` semantics: a candidate that
     // exists but is not executable yields `EACCES` (-> 126),
-    // not `ENOENT` (-> 127). Track the first non-NotFound
+    // not `ENOENT` (-> 127). Track the first non-skippable
     // classification we encounter and surface it once the walk
     // exhausts without finding an executable candidate
-    // (RD finding #1). NotFound entries are silently skipped
-    // (a missing PATH entry is normal during a search).
-    let mut first_non_not_found: Option<Error> = None;
+    // (RD finding #1). Skippable classifications: `NotFound`
+    // (a missing PATH entry is normal during a search) and
+    // ENOTDIR (a malformed PATH component such as a regular
+    // file makes `<entry>/<cmd>` yield ENOTDIR -- still a
+    // "not in PATH" miss, not a permissions/contract violation).
+    // NB: `io::ErrorKind::NotADirectory` is unstable on our
+    // MSRV (1.78), stabilised in 1.83 -- we match on
+    // `raw_os_error() == Some(libc::ENOTDIR)` instead.
+    let mut first_terminal: Option<Error> = None;
     for dir in std::env::split_paths(path_var) {
         let candidate = dir.join(p);
         match classify_path(&candidate, p) {
             Ok(()) => return Ok(()),
-            Err(Error::Spawn(io)) if io.kind() == io::ErrorKind::NotFound => {}
+            Err(Error::Spawn(io)) if is_path_walk_skippable(&io) => {}
             Err(e) => {
-                if first_non_not_found.is_none() {
-                    first_non_not_found = Some(e);
+                if first_terminal.is_none() {
+                    first_terminal = Some(e);
                 }
             }
         }
     }
-    if let Some(e) = first_non_not_found {
+    if let Some(e) = first_terminal {
         return Err(e);
     }
     Err(Error::Spawn(io::Error::new(
         io::ErrorKind::NotFound,
         format!("command not found in PATH: {}", p.display()),
     )))
+}
+
+/// True iff a `classify_path` failure during the PATH walk
+/// should be treated as a "this PATH entry didn't yield a hit"
+/// miss rather than a terminal classification. Covers:
+///
+/// - `io::ErrorKind::NotFound` -- the most common case; the
+///   PATH entry simply doesn't contain the command.
+/// - `ENOTDIR` (errno 20) -- the PATH entry is a regular file
+///   (or a non-directory of any kind), so `<entry>/<cmd>`
+///   cannot resolve. Stable `io::ErrorKind::NotADirectory`
+///   would express this directly but is unstable on our MSRV
+///   (1.78), stabilised in 1.83 -- match raw os error instead.
+#[cfg(unix)]
+fn is_path_walk_skippable(io: &io::Error) -> bool {
+    if io.kind() == io::ErrorKind::NotFound {
+        return true;
+    }
+    io.raw_os_error() == Some(libc::ENOTDIR)
 }
 
 /// Inspect a single concrete path. `display_path` is what the
@@ -558,9 +583,33 @@ mod tests {
             preflight_command_with_path(OsStr::new(bare), &joined).expect("should resolve good");
         }
 
-        // RD finding #4: trailing-separator paths like `foo/` must
-        // be detected as separator-bearing and resolved literally,
-        // not search-walked.
+        // ENOTDIR PATH-component skipping (codex P2 finding):
+        // when a PATH entry is a regular file, `<entry>/<cmd>`
+        // yields ENOTDIR. That's still a "command not in PATH"
+        // miss -> 127, not a 126 contract violation.
+        #[test]
+        fn preflight_path_walk_skips_enotdir_when_path_entry_is_a_regular_file() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            // PATH entry is a regular file, not a directory.
+            let bogus_entry = dir.path().join("not-a-dir");
+            std::fs::write(&bogus_entry, b"plain").expect("write");
+            let bare = "qorrection-codex-enotdir";
+            let path_var = OsString::from_vec(bogus_entry.as_os_str().as_bytes().to_vec());
+            let err =
+                preflight_command_with_path(OsStr::new(bare), &path_var).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => assert_eq!(
+                    io.kind(),
+                    io::ErrorKind::NotFound,
+                    "ENOTDIR PATH entries must be skipped, leaving NotFound (-> exit 127); got io={io:?}"
+                ),
+                other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
+            }
+        }
+
+        // RD finding #4: trailing-separator paths like `foo/`
+        // must be detected as separator-bearing and resolved
+        // literally, not search-walked.
         #[test]
         fn preflight_trailing_slash_classifies_literally() {
             let dir = tempfile::tempdir().expect("tempdir");
