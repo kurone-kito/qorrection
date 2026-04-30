@@ -10,9 +10,10 @@
 //! Rules (locked v0.1, see plan §6 D-RAWMODE):
 //!
 //! - Acquire only when **both** stdin and stdout are TTYs. The
-//!   non-TTY path bypasses PTY entirely (D-NONTTY) and so must
-//!   also bypass raw mode -- touching termios on a pipe is
-//!   undefined.
+//!   eventual non-TTY path will bypass PTY entirely (D-NONTTY,
+//!   tracked under #29 / #30 / #31); until that lands, raw-mode
+//!   acquisition must still be skipped when either stream is
+//!   non-TTY -- touching termios on a pipe is undefined.
 //! - Restoration runs in [`Drop`], so any panic between
 //!   acquisition and the end of the session unwinds back through
 //!   the guard and disables raw mode on the way out.
@@ -37,8 +38,11 @@ pub fn should_arm(caps: &TerminalCaps) -> bool {
 /// The disable side-effect is stored as an `FnOnce` closure so
 /// unit tests can substitute a counter-incrementing hook and
 /// assert restoration semantics without touching real termios.
-/// Production callers ([`acquire`]) supply
-/// `crossterm::terminal::disable_raw_mode`.
+/// Production callers ([`acquire`]) install a best-effort hook
+/// that calls `crossterm::terminal::disable_raw_mode` and
+/// **discards** any error -- a destructor cannot meaningfully
+/// recover from a failed restore, and the user is already in a
+/// bad state if it fails. The hook itself returns `()`.
 pub struct RawGuard {
     on_drop: Option<Box<dyn FnOnce() + Send + 'static>>,
 }
