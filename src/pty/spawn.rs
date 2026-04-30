@@ -110,6 +110,23 @@ pub(crate) fn spawn_child(
 ///   path. If `current_dir()` fails we fall back to the original
 ///   input -- portable-pty's behaviour will then surface through
 ///   [`map_spawn_error`], same as today.
+///
+/// **Documented contract deviation**: when we rewrite a relative
+/// path like `subdir/tool` to its absolute form, the child sees
+/// the absolute path as its `argv[0]` because portable-pty
+/// 0.9's `CommandBuilder` does not expose a way to separate the
+/// resolved executable path from `argv[0]`. The alternative is
+/// silently failing to spawn the program at all (the bug this
+/// helper exists to fix), which is strictly worse for every
+/// known qorrection wrap target -- the arming allowlist
+/// (`copilot`, `codex`, `claude`, `aichat`, `gemini`, `qwen`,
+/// `ollama`) ships only as bare names, none inspect `argv[0]`
+/// for its relative form, and operators who do invoke an arbitrary
+/// `subdir/tool` are typically not introspecting `argv[0]` either.
+/// If a future wrap target needs the original relative `argv[0]`
+/// preserved, the right place to fix it is upstream in
+/// portable-pty (or by replacing portable-pty with a builder
+/// that separates the two) -- not here.
 fn resolve_command_path(command: &OsStr) -> std::ffi::OsString {
     let p = Path::new(command);
     if p.is_absolute() {
