@@ -193,15 +193,11 @@ mod tests {
 
     #[test]
     fn noop_guard_runs_no_hook() {
-        // A noop guard has no hook to fire; nothing should be
-        // observed after it leaves scope.
+        // A noop guard has no hook to fire; the counter must stay
+        // at zero across its entire lifetime.
         let counter = Arc::new(AtomicUsize::new(0));
-        let observed = Arc::clone(&counter);
         {
             let _g = RawGuard::noop();
-            // Hold a clone so the closure-equivalent reference
-            // is alive; we simply never wire it into the guard.
-            let _ = observed;
         }
         assert_eq!(counter.load(Ordering::SeqCst), 0);
     }
