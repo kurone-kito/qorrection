@@ -48,7 +48,7 @@ mod session;
 mod size;
 mod spawn;
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::process::{Command, ExitCode};
 
 use crate::{
@@ -120,11 +120,7 @@ where
 /// applies here too.
 fn non_tty_passthrough(command: &OsString, args: &[OsString]) -> Result<ExitCode> {
     let status = Command::new(command.as_os_str())
-        .args(
-            args.iter()
-                .map(OsString::as_os_str)
-                .collect::<Vec<&OsStr>>(),
-        )
+        .args(args)
         .status()
         .map_err(Error::Spawn)?;
     exit::map_exit_status(portable_pty::ExitStatus::from(status))
