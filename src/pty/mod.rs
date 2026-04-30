@@ -30,6 +30,7 @@
 //! by [`default_body`]; PR 5 (#26) wires them into the spawn
 //! call using the PR 2 spawn primitives.
 
+mod exit;
 mod forward;
 mod pump;
 mod size;
