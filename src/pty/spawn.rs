@@ -206,6 +206,19 @@ pub(crate) fn preflight_command(command: &OsStr) -> Result<()> {
 fn preflight_command_with_path(command: &OsStr, path_var: &OsStr) -> Result<()> {
     use std::os::unix::ffi::OsStrExt;
 
+    // An empty command name is never spawnable. Without this
+    // guard the PATH walk below would `dir.join("")` -> the PATH
+    // directory itself, and `classify_path` would then report
+    // "is a directory" (PermissionDenied -> exit 126). The
+    // correct contract for an empty/invalid command name is
+    // NotFound -> exit 127.
+    if command.as_bytes().is_empty() {
+        return Err(Error::Spawn(io::Error::new(
+            io::ErrorKind::NotFound,
+            "empty command name",
+        )));
+    }
+
     let p = Path::new(command);
     // A path containing a separator (or an absolute prefix) is
     // resolved literally; a bare name is searched in PATH. We
@@ -344,6 +357,21 @@ mod tests {
             match err {
                 Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
                 other => panic!("expected Error::Spawn(PermissionDenied), got {other:?}"),
+            }
+        }
+
+        // RD iter-3: empty command name must classify as
+        // NotFound (-> exit 127), not as "PATH directory is a
+        // directory" (-> 126) which the bare PATH walk would
+        // otherwise produce for `dir.join("")`.
+        #[test]
+        fn preflight_empty_command_yields_spawn_not_found() {
+            let path_var = OsString::from("/bin:/usr/bin");
+            let err =
+                preflight_command_with_path(OsStr::new(""), &path_var).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::NotFound),
+                other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
             }
         }
 
