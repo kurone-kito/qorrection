@@ -172,10 +172,11 @@ fn resolve_command_path(command: &OsStr, cwd: &Path) -> std::ffi::OsString {
 }
 
 /// True iff `command` contains a path-separator byte. Unix uses
-/// `/`; on Windows portable-pty also accepts `\\`. We only run
-/// the resolution on Unix today (preflight is also `cfg(unix)`),
-/// but keep the detector cross-platform so PR 5 does not have to
-/// revisit the helper.
+/// `/`; on Windows portable-pty also accepts `\\`. The detector
+/// is invoked unconditionally from [`resolve_command_path`]
+/// (which itself runs on every spawn, regardless of target OS),
+/// so the cross-platform branch matters in practice -- not just
+/// as future-proofing.
 fn path_has_separator(command: &OsStr) -> bool {
     #[cfg(unix)]
     {
