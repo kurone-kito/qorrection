@@ -305,6 +305,7 @@ fn classify_path(p: &Path, display_path: &Path) -> Result<()> {
 /// consistent with portable-pty's `nix::unistd::access(_, X_OK)` call
 /// so the preflight reproduces the same admit/reject decision the
 /// eventual spawn would make.
+#[cfg(unix)]
 fn access_x_ok(p: &Path) -> bool {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
