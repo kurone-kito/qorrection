@@ -31,16 +31,17 @@ use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
 
-use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 
 use crate::{Error, Result};
 
 /// Owning bundle of a live PTY spawn.
 ///
 /// Field declaration order = drop order. `child` ships first
-/// so its handle is dropped before the master/slave fds are
-/// released, which keeps PTY teardown semantics predictable
-/// (the master sees EOF after the child handle is gone).
+/// so its handle is dropped before the master fd is released,
+/// which keeps PTY teardown semantics predictable. The slave fd
+/// is closed before [`spawn_child`] returns so the master can
+/// observe EOF when the child exits.
 ///
 /// **Drop is NOT a complete shutdown protocol** -- Rust's drop
 /// for `Box<dyn Child>` neither waits for nor kills the
@@ -50,7 +51,7 @@ use crate::{Error, Result};
 #[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct SpawnedSession {
     pub child: Box<dyn portable_pty::Child + Send + Sync>,
-    pub pair: PtyPair,
+    pub master: Box<dyn MasterPty + Send>,
 }
 
 /// Spawn `command` + `args` on a fresh PTY pair sized `size`.
@@ -65,13 +66,11 @@ pub(crate) fn spawn_child(
     args: &[std::ffi::OsString],
     size: PtySize,
 ) -> Result<SpawnedSession> {
-    #[cfg(unix)]
-    preflight_command(command)?;
-
     // Resolve the parent's CWD up-front so the entire spawn
-    // pipeline (relative-path canonicalisation + child cwd
-    // anchoring) sees a single, consistent snapshot. We treat a
-    // failed `current_dir()` lookup as a spawn-setup failure
+    // pipeline (preflight, relative-path canonicalisation, and
+    // child cwd anchoring) sees a single, consistent snapshot.
+    // We treat a failed `current_dir()` lookup as a spawn-setup
+    // failure
     // because portable-pty's `CommandBuilder::as_command`
     // (cmdbuilder.rs:501-507) silently substitutes `$HOME` when
     // no cwd is configured -- which would silently run the
@@ -99,6 +98,9 @@ pub(crate) fn spawn_child(
         Error::Spawn(io::Error::other(CurrentDirLookupError(e)))
     })?;
 
+    #[cfg(unix)]
+    preflight_command(command, &cwd)?;
+
     let system = native_pty_system();
     let pair = system.openpty(size).map_err(Error::Pty)?;
 
@@ -121,7 +123,11 @@ pub(crate) fn spawn_child(
     builder.cwd(&cwd);
 
     let child = pair.slave.spawn_command(builder).map_err(map_spawn_error)?;
-    Ok(SpawnedSession { child, pair })
+    drop(pair.slave);
+    Ok(SpawnedSession {
+        child,
+        master: pair.master,
+    })
 }
 
 /// Canonicalise `command` against the supplied `cwd` snapshot.
@@ -263,10 +269,13 @@ impl std::error::Error for CurrentDirLookupError {
 /// failure modes that only the OS can detect -- e.g. setuid
 /// mismatches that `access(X_OK)` accepts but `execve` rejects
 /// -- still surface from portable-pty via [`map_spawn_error`].
+/// Relative literal paths and relative PATH entries are resolved
+/// against the supplied `cwd` snapshot so preflight and spawn see
+/// the same working-directory state.
 #[cfg(unix)]
-pub(crate) fn preflight_command(command: &OsStr) -> Result<()> {
+pub(crate) fn preflight_command(command: &OsStr, cwd: &Path) -> Result<()> {
     let path_var = std::env::var_os("PATH");
-    preflight_command_with_optional_path(command, path_var.as_deref())
+    preflight_command_with_optional_path(command, cwd, path_var.as_deref())
 }
 
 /// Pure variant: takes the `PATH` value as an argument so tests
@@ -275,7 +284,20 @@ pub(crate) fn preflight_command(command: &OsStr) -> Result<()> {
 /// tests).
 #[cfg(all(unix, test))]
 fn preflight_command_with_path(command: &OsStr, path_var: &OsStr) -> Result<()> {
-    preflight_command_with_optional_path(command, Some(path_var))
+    let cwd = std::env::current_dir().expect("current dir");
+    preflight_command_with_optional_path(command, &cwd, Some(path_var))
+}
+
+/// Pure variant: takes the `cwd` snapshot and `PATH` value as
+/// arguments so tests can verify relative path resolution without
+/// mutating process-wide state.
+#[cfg(all(unix, test))]
+fn preflight_command_with_path_and_cwd(
+    command: &OsStr,
+    cwd: &Path,
+    path_var: &OsStr,
+) -> Result<()> {
+    preflight_command_with_optional_path(command, cwd, Some(path_var))
 }
 
 /// Pure variant that preserves the distinction between `PATH`
@@ -285,7 +307,11 @@ fn preflight_command_with_path(command: &OsStr, path_var: &OsStr) -> Result<()> 
 /// must classify as `NotFound` instead of accidentally probing the
 /// current directory via an empty synthetic path entry.
 #[cfg(unix)]
-fn preflight_command_with_optional_path(command: &OsStr, path_var: Option<&OsStr>) -> Result<()> {
+fn preflight_command_with_optional_path(
+    command: &OsStr,
+    cwd: &Path,
+    path_var: Option<&OsStr>,
+) -> Result<()> {
     use std::os::unix::ffi::OsStrExt;
 
     // An empty command name is never spawnable. Without this
@@ -309,8 +335,11 @@ fn preflight_command_with_optional_path(command: &OsStr, path_var: Option<&OsStr
     // collapses `foo/`, single-component absolutes, and other
     // edge shapes (RD finding #4).
     let has_sep = command.as_bytes().contains(&b'/');
-    if p.is_absolute() || has_sep {
+    if p.is_absolute() {
         return classify_path(p, p);
+    }
+    if has_sep {
+        return classify_path(&cwd.join(p), p);
     }
     let Some(path_var) = path_var else {
         return Err(Error::Spawn(io::Error::new(
@@ -334,7 +363,12 @@ fn preflight_command_with_optional_path(command: &OsStr, path_var: Option<&OsStr
     // `raw_os_error() == Some(libc::ENOTDIR)` instead.
     let mut first_terminal: Option<Error> = None;
     for dir in std::env::split_paths(path_var) {
-        let candidate = dir.join(p);
+        let search_dir = if dir.is_absolute() {
+            dir
+        } else {
+            cwd.join(dir)
+        };
+        let candidate = search_dir.join(p);
         match classify_path(&candidate, p) {
             Ok(()) => return Ok(()),
             Err(Error::Spawn(io)) if is_path_walk_skippable(&io) => {}
@@ -453,6 +487,14 @@ mod tests {
         use super::*;
         use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
+        fn cwd() -> std::path::PathBuf {
+            std::env::current_dir().expect("current dir")
+        }
+
+        fn preflight_command(command: &OsStr) -> Result<()> {
+            super::super::preflight_command(command, &cwd())
+        }
+
         #[test]
         fn preflight_absolute_missing_path_yields_spawn_not_found() {
             let cmd = os("/definitely-not-there/qorrection-no-such-cmd-xyz");
@@ -491,7 +533,7 @@ mod tests {
 
         #[test]
         fn preflight_missing_path_for_bare_name_yields_spawn_not_found() {
-            let err = preflight_command_with_optional_path(OsStr::new("sh"), None)
+            let err = preflight_command_with_optional_path(OsStr::new("sh"), &cwd(), None)
                 .expect_err("should fail");
             match err {
                 Error::Spawn(io) => {
@@ -508,8 +550,41 @@ mod tests {
 
         #[test]
         fn preflight_missing_path_still_classifies_literal_path() {
-            preflight_command_with_optional_path(OsStr::new("/bin/sh"), None)
+            preflight_command_with_optional_path(OsStr::new("/bin/sh"), &cwd(), None)
                 .expect("/bin/sh must exist on Unix");
+        }
+
+        #[test]
+        fn preflight_relative_literal_uses_supplied_cwd_snapshot() {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let bin_dir = dir.path().join("bin");
+            std::fs::create_dir(&bin_dir).expect("mkdir");
+            let file = bin_dir.join("tool");
+            std::fs::write(&file, b"#!/bin/sh\nexit 0\n").expect("write");
+            let mut perms = std::fs::metadata(&file).expect("meta").permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&file, perms).expect("set perms");
+
+            preflight_command_with_optional_path(OsStr::new("bin/tool"), dir.path(), None)
+                .expect("relative literal should resolve against supplied cwd");
+        }
+
+        #[test]
+        fn preflight_relative_path_entry_uses_supplied_cwd_snapshot() {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path_dir = dir.path().join("tools");
+            std::fs::create_dir(&path_dir).expect("mkdir");
+            let bare = "qorrection-cwd-snapshot-tool";
+            let file = path_dir.join(bare);
+            std::fs::write(&file, b"#!/bin/sh\nexit 0\n").expect("write");
+            let mut perms = std::fs::metadata(&file).expect("meta").permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&file, perms).expect("set perms");
+
+            preflight_command_with_path_and_cwd(OsStr::new(bare), dir.path(), OsStr::new("tools"))
+                .expect("relative PATH entry should resolve against supplied cwd");
         }
 
         #[test]
@@ -801,15 +876,8 @@ mod tests {
 
             let mut killer = session.child.clone_killer();
 
-            // Drop slave so the master observes EOF when child exits.
-            drop(session.pair.slave);
-
-            let mut reader = session
-                .pair
-                .master
-                .try_clone_reader()
-                .expect("clone reader");
-            let mut master = Some(session.pair.master);
+            let mut reader = session.master.try_clone_reader().expect("clone reader");
+            let mut master = Some(session.master);
 
             let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>();
             let reader_thread = thread::spawn(move || {
