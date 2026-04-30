@@ -65,6 +65,7 @@ pub(crate) fn spawn_child(
     args: &[std::ffi::OsString],
     size: PtySize,
 ) -> Result<SpawnedSession> {
+    #[cfg(unix)]
     preflight_command(command)?;
 
     let system = native_pty_system();
@@ -104,28 +105,67 @@ fn map_spawn_error(err: anyhow::Error) -> Error {
 /// `Error::Spawn(io::Error)` so the existing 127 / 126 exit-code
 /// mapping in `src/error.rs` fires.
 ///
+/// **Unix-only.** On Windows, `portable-pty`'s resolver consults
+/// `PATHEXT`, so a literal exact-match preflight here would
+/// reject normal invocations like `git`/`python` that resolve to
+/// `git.exe`/`python.exe`. Until a cross-platform PATHEXT-aware
+/// implementation lands, Windows leans on `portable-pty` +
+/// [`map_spawn_error`] for command-resolution failure
+/// classification (see PR 2 RD finding #3).
+///
 /// Returns `Ok(())` when the command exists and looks executable
 /// (under the platform's notion of executable). The post-`fork`
 /// failure modes that only the OS can detect -- e.g. setuid
 /// mismatches that `access(X_OK)` accepts but `execve` rejects
 /// -- still surface from portable-pty via [`map_spawn_error`].
+#[cfg(unix)]
 pub(crate) fn preflight_command(command: &OsStr) -> Result<()> {
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    preflight_command_with_path(command, path_var.as_os_str())
+}
+
+/// Pure variant: takes the `PATH` value as an argument so tests
+/// can drive PATH-walk classification without mutating the
+/// process-wide environment (which would race with parallel
+/// tests).
+#[cfg(unix)]
+fn preflight_command_with_path(command: &OsStr, path_var: &OsStr) -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
     let p = Path::new(command);
     // A path containing a separator (or an absolute prefix) is
-    // resolved literally; a bare name is searched in PATH.
-    if p.is_absolute() || p.components().count() > 1 {
+    // resolved literally; a bare name is searched in PATH. We
+    // detect a separator at the byte level rather than via
+    // `Path::components().count() > 1` because the latter
+    // collapses `foo/`, single-component absolutes, and other
+    // edge shapes (RD finding #4).
+    let has_sep = command.as_bytes().contains(&b'/');
+    if p.is_absolute() || has_sep {
         return classify_path(p, p);
     }
-    let path_var = std::env::var_os("PATH").unwrap_or_default();
-    for dir in std::env::split_paths(&path_var) {
+
+    // PATH walk. POSIX `execvp` semantics: a candidate that
+    // exists but is not executable yields `EACCES` (-> 126),
+    // not `ENOENT` (-> 127). Track the first non-NotFound
+    // classification we encounter and surface it once the walk
+    // exhausts without finding an executable candidate
+    // (RD finding #1). NotFound entries are silently skipped
+    // (a missing PATH entry is normal during a search).
+    let mut first_non_not_found: Option<Error> = None;
+    for dir in std::env::split_paths(path_var) {
         let candidate = dir.join(p);
-        // `classify_path` returns Ok only when the candidate is
-        // both present and executable. Any error from a single
-        // candidate (NotFound, perm-denied, …) is silently
-        // skipped -- the next PATH entry might still resolve.
-        if classify_path(&candidate, p).is_ok() {
-            return Ok(());
+        match classify_path(&candidate, p) {
+            Ok(()) => return Ok(()),
+            Err(Error::Spawn(io)) if io.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                if first_non_not_found.is_none() {
+                    first_non_not_found = Some(e);
+                }
+            }
         }
+    }
+    if let Some(e) = first_non_not_found {
+        return Err(e);
     }
     Err(Error::Spawn(io::Error::new(
         io::ErrorKind::NotFound,
@@ -137,6 +177,7 @@ pub(crate) fn preflight_command(command: &OsStr) -> Result<()> {
 /// caller wants to surface in the error message (typically the
 /// original user-supplied command for bare-name lookups, or the
 /// candidate path itself for absolute / relative inputs).
+#[cfg(unix)]
 fn classify_path(p: &Path, display_path: &Path) -> Result<()> {
     let meta = match std::fs::metadata(p) {
         Ok(m) => m,
@@ -154,7 +195,6 @@ fn classify_path(p: &Path, display_path: &Path) -> Result<()> {
             format!("is a directory: {}", display_path.display()),
         )));
     }
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         if meta.permissions().mode() & 0o111 == 0 {
@@ -176,75 +216,163 @@ mod tests {
         OsString::from(s)
     }
 
-    #[test]
-    fn preflight_absolute_missing_path_yields_spawn_not_found() {
-        let cmd = os("/definitely-not-there/qorrection-no-such-cmd-xyz");
-        let err = preflight_command(&cmd).expect_err("should fail");
-        match err {
-            Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::NotFound),
-            other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn preflight_directory_yields_spawn_permission_denied() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().to_path_buf().into_os_string();
-        let err = preflight_command(&path).expect_err("should fail");
-        match err {
-            Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
-            other => panic!("expected Error::Spawn(PermissionDenied), got {other:?}"),
-        }
-    }
-
+    // ---- Preflight tests (Unix-only: see preflight_command docs) ---
     #[cfg(unix)]
-    #[test]
-    fn preflight_non_executable_file_yields_spawn_permission_denied() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("plain.txt");
-        std::fs::write(&path, b"plain").expect("write");
-        let mut perms = std::fs::metadata(&path).expect("meta").permissions();
-        perms.set_mode(0o644); // r/w but no x
-        std::fs::set_permissions(&path, perms).expect("set perms");
+    mod preflight {
+        use super::*;
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
-        let err = preflight_command(path.as_os_str()).expect_err("should fail");
-        match err {
-            Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
-            other => panic!("expected Error::Spawn(PermissionDenied), got {other:?}"),
-        }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn preflight_real_binary_in_path_succeeds() {
-        // /bin/sh is part of POSIX baseline; both Linux and macOS
-        // CI runners have it. /bin/echo would also work; sh is
-        // chosen because it's the canonical "must exist" binary.
-        preflight_command(OsStr::new("/bin/sh")).expect("/bin/sh must exist on Unix");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn preflight_bare_name_resolves_via_path() {
-        // `sh` is on every PATH on Unix CI runners.
-        preflight_command(OsStr::new("sh")).expect("sh must be in PATH on Unix");
-    }
-
-    #[test]
-    fn preflight_bare_name_not_in_path_yields_not_found() {
-        let cmd = os("qorrection-definitely-no-such-bin-xyz-123");
-        let err = preflight_command(&cmd).expect_err("should fail");
-        match err {
-            Error::Spawn(io) => {
-                assert_eq!(io.kind(), io::ErrorKind::NotFound);
-                let msg = io.to_string();
-                assert!(
-                    msg.contains("PATH"),
-                    "PATH-search miss should mention PATH; got {msg:?}"
-                );
+        #[test]
+        fn preflight_absolute_missing_path_yields_spawn_not_found() {
+            let cmd = os("/definitely-not-there/qorrection-no-such-cmd-xyz");
+            let err = preflight_command(&cmd).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::NotFound),
+                other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
             }
-            other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
+        }
+
+        #[test]
+        fn preflight_directory_yields_spawn_permission_denied() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().to_path_buf().into_os_string();
+            let err = preflight_command(&path).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
+                other => panic!("expected Error::Spawn(PermissionDenied), got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn preflight_non_executable_file_yields_spawn_permission_denied() {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("plain.txt");
+            std::fs::write(&path, b"plain").expect("write");
+            let mut perms = std::fs::metadata(&path).expect("meta").permissions();
+            perms.set_mode(0o644); // r/w but no x
+            std::fs::set_permissions(&path, perms).expect("set perms");
+
+            let err = preflight_command(path.as_os_str()).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::PermissionDenied),
+                other => panic!("expected Error::Spawn(PermissionDenied), got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn preflight_real_binary_in_path_succeeds() {
+            // /bin/sh is part of POSIX baseline; both Linux and macOS
+            // CI runners have it. /bin/echo would also work; sh is
+            // chosen because it's the canonical "must exist" binary.
+            preflight_command(OsStr::new("/bin/sh")).expect("/bin/sh must exist on Unix");
+        }
+
+        #[test]
+        fn preflight_bare_name_resolves_via_path() {
+            // `sh` is on every PATH on Unix CI runners.
+            preflight_command(OsStr::new("sh")).expect("sh must be in PATH on Unix");
+        }
+
+        #[test]
+        fn preflight_bare_name_not_in_path_yields_not_found() {
+            let cmd = os("qorrection-definitely-no-such-bin-xyz-123");
+            let err = preflight_command(&cmd).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => {
+                    assert_eq!(io.kind(), io::ErrorKind::NotFound);
+                    let msg = io.to_string();
+                    assert!(
+                        msg.contains("PATH"),
+                        "PATH-search miss should mention PATH; got {msg:?}"
+                    );
+                }
+                other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
+            }
+        }
+
+        // RD finding #1: PATH walk must preserve "found but not
+        // executable" classification (-> 126), not collapse it to
+        // NotFound (-> 127).
+        #[test]
+        fn preflight_path_walk_preserves_permission_denied_when_only_candidate_is_a_dir() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let bare = "qorrection-rd1-dir-name";
+            std::fs::create_dir(dir.path().join(bare)).expect("mkdir");
+            let path_var = OsString::from_vec(dir.path().as_os_str().as_bytes().to_vec());
+            let err =
+                preflight_command_with_path(OsStr::new(bare), &path_var).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => assert_eq!(
+                    io.kind(),
+                    io::ErrorKind::PermissionDenied,
+                    "expected PermissionDenied (-> exit 126), got io={io:?}"
+                ),
+                other => panic!("expected Error::Spawn(PermissionDenied), got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn preflight_path_walk_preserves_permission_denied_when_only_candidate_not_executable() {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let bare = "qorrection-rd1-noexec";
+            let file = dir.path().join(bare);
+            std::fs::write(&file, b"plain").expect("write");
+            let mut perms = std::fs::metadata(&file).expect("meta").permissions();
+            perms.set_mode(0o644);
+            std::fs::set_permissions(&file, perms).expect("set perms");
+            let path_var = OsString::from_vec(dir.path().as_os_str().as_bytes().to_vec());
+            let err =
+                preflight_command_with_path(OsStr::new(bare), &path_var).expect_err("should fail");
+            match err {
+                Error::Spawn(io) => assert_eq!(
+                    io.kind(),
+                    io::ErrorKind::PermissionDenied,
+                    "expected PermissionDenied (-> exit 126), got io={io:?}"
+                ),
+                other => panic!("expected Error::Spawn(PermissionDenied), got {other:?}"),
+            }
+        }
+
+        // RD finding #1 (positive): an early bad candidate must
+        // NOT shadow a later good candidate. PATH walk continues
+        // until a viable candidate succeeds.
+        #[test]
+        fn preflight_path_walk_skips_bad_candidate_for_later_good_candidate() {
+            use std::os::unix::fs::PermissionsExt;
+            let bad = tempfile::tempdir().expect("bad dir");
+            let good = tempfile::tempdir().expect("good dir");
+            let bare = "qorrection-rd1-shadowed";
+            std::fs::create_dir(bad.path().join(bare)).expect("mkdir bad");
+            let good_path = good.path().join(bare);
+            std::fs::write(&good_path, b"#!/bin/sh\nexit 0\n").expect("write good");
+            let mut perms = std::fs::metadata(&good_path).expect("meta").permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&good_path, perms).expect("set perms");
+            let joined = std::env::join_paths([bad.path(), good.path()]).expect("join");
+            preflight_command_with_path(OsStr::new(bare), &joined).expect("should resolve good");
+        }
+
+        // RD finding #4: trailing-separator paths like `foo/` must
+        // be detected as separator-bearing and resolved literally,
+        // not search-walked.
+        #[test]
+        fn preflight_trailing_slash_classifies_literally() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let mut p = dir.path().as_os_str().to_owned();
+            p.push("/");
+            let err = preflight_command(&p).expect_err("should fail (is a dir)");
+            match err {
+                Error::Spawn(io) => {
+                    let msg = io.to_string();
+                    assert!(
+                        !msg.contains("not found in PATH"),
+                        "trailing-slash input must not be PATH-walked; got {msg:?}"
+                    );
+                }
+                other => panic!("expected Error::Spawn(_), got {other:?}"),
+            }
         }
     }
 
