@@ -81,10 +81,13 @@ pub(crate) fn spawn_child(
     // problem as `Error::Spawn` (-> exit 126) rather than
     // hiding it.
     let cwd = std::env::current_dir().map_err(|e| {
-        Error::Spawn(io::Error::new(
-            e.kind(),
-            format!("failed to resolve current working directory for PTY child: {e}"),
-        ))
+        // Wrap the original io::Error as the inner source so
+        // tooling that walks `Error::source()` can still reach
+        // the underlying OS detail (errno, etc.). The wrapper
+        // contributes the human-readable context message via
+        // its `Display` impl and exposes the original via
+        // `source()` -- preserving both layers.
+        Error::Spawn(io::Error::new(e.kind(), CurrentDirLookupError(e)))
     })?;
 
     let system = native_pty_system();
@@ -203,6 +206,32 @@ fn map_spawn_error(err: anyhow::Error) -> Error {
     match err.downcast::<io::Error>() {
         Ok(io) => Error::Spawn(io),
         Err(other) => Error::Pty(other),
+    }
+}
+
+/// Wrapper that preserves the original `io::Error` from a failed
+/// `current_dir()` lookup as a [`std::error::Error::source`]
+/// while contributing a human-readable context message via its
+/// [`Display`] impl. Used as the inner payload of the
+/// [`Error::Spawn`] reported by [`spawn_child`] when CWD lookup
+/// fails -- so tooling that walks the cause chain can still
+/// reach the underlying OS detail.
+#[derive(Debug)]
+struct CurrentDirLookupError(io::Error);
+
+impl std::fmt::Display for CurrentDirLookupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "failed to resolve current working directory for PTY child: {}",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for CurrentDirLookupError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
     }
 }
 
@@ -558,6 +587,27 @@ mod tests {
             matches!(err, Error::Pty(_)),
             "expected Error::Pty, got {err:?}"
         );
+    }
+
+    #[test]
+    fn current_dir_lookup_error_preserves_inner_io_error_as_source() {
+        let inner = io::Error::new(io::ErrorKind::NotFound, "missing /proc entry");
+        let inner_kind = inner.kind();
+        let inner_msg = inner.to_string();
+        let wrapped = io::Error::new(inner_kind, CurrentDirLookupError(inner));
+        // Display layer carries the human-readable context.
+        assert!(wrapped
+            .to_string()
+            .contains("failed to resolve current working directory for PTY child"));
+        // source() must reach the original io::Error so tooling
+        // walking the chain can still surface OS-level detail.
+        let src = wrapped
+            .get_ref()
+            .expect("payload set")
+            .source()
+            .expect("source preserved");
+        assert!(src.to_string().contains(&inner_msg));
+        assert_eq!(wrapped.kind(), inner_kind);
     }
 
     // ---- resolve_command_path (RD finding #2) ---------------
