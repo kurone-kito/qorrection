@@ -83,11 +83,19 @@ where
     loop {
         let n = match reader.read(&mut buf) {
             Ok(0) => {
-                // Final flush is best-effort: we are already
-                // terminating cleanly, so a flush error here
-                // does not change the outcome.
-                let _ = writer.flush();
-                return Ok(ForwarderExit::ReaderEof { bytes });
+                // EOF flush must NOT swallow errors: a buffered
+                // writer (e.g. line-buffered stdout wrapper)
+                // may stage bytes whose first failure point is
+                // this final flush. Classify it the same way
+                // the per-chunk flush does so callers see
+                // `WriterClosed` instead of a misleading
+                // `ReaderEof` when the consumer hung up while
+                // bytes were still pending.
+                return match flush_with_retry(writer) {
+                    FlushOutcome::Ok => Ok(ForwarderExit::ReaderEof { bytes }),
+                    FlushOutcome::WriterClosed => Ok(ForwarderExit::WriterClosed { bytes }),
+                    FlushOutcome::Err(e) => Err(e),
+                };
             }
             Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -102,15 +110,34 @@ where
             Err(WriteOutcome::Err(e)) => return Err(e),
         }
         // Per-chunk flush so interactive prompts (no trailing
-        // newline) reach the consumer immediately. BrokenPipe
-        // here mirrors the writer policy.
-        match writer.flush() {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
-            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => {
+        // newline) reach the consumer immediately. `Interrupted`
+        // is retried in a tight loop -- treating it as success
+        // would let EINTR from a signal indefinitely defer the
+        // flush until the next read returns, defeating the
+        // prompt-visibility guarantee.
+        match flush_with_retry(writer) {
+            FlushOutcome::Ok => {}
+            FlushOutcome::WriterClosed => {
                 return Ok(ForwarderExit::WriterClosed { bytes });
             }
-            Err(e) => return Err(e),
+            FlushOutcome::Err(e) => return Err(e),
+        }
+    }
+}
+
+enum FlushOutcome {
+    Ok,
+    WriterClosed,
+    Err(io::Error),
+}
+
+fn flush_with_retry<W: Write>(writer: &mut W) -> FlushOutcome {
+    loop {
+        match writer.flush() {
+            Ok(()) => return FlushOutcome::Ok,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => return FlushOutcome::WriterClosed,
+            Err(e) => return FlushOutcome::Err(e),
         }
     }
 }
@@ -357,14 +384,102 @@ mod tests {
     }
 
     #[test]
-    fn spawn_forwarder_flushes_each_chunk() {
+    fn spawn_forwarder_flushes_at_least_once_per_chunk() {
+        // Strengthens the previous `>= 1` assertion. A
+        // single-byte cursor is read in (at most) one chunk
+        // before EOF; with per-chunk + EOF flush the count
+        // must be >= 2. A regression that drops the per-chunk
+        // flush would leave only the EOF flush and fail this.
         let writer = RecordingWriter::default();
         let probe = writer.clone();
-        let _ = forward_blocking(Cursor::new(b"abc".to_vec()), writer).unwrap();
+        let _ = forward_blocking(Cursor::new(b"a".to_vec()), writer).unwrap();
         let (_, flushes) = probe.snapshot();
-        // At least one per-chunk flush must precede the EOF
-        // path; exact count depends on read chunking but >= 1.
-        assert!(flushes >= 1, "expected >=1 flush call, got {flushes}");
+        assert!(
+            flushes >= 2,
+            "expected >=2 flush calls (per-chunk + EOF), got {flushes}"
+        );
+    }
+
+    #[test]
+    fn spawn_forwarder_retries_interrupted_flush() {
+        // Writer's flush returns Interrupted twice, then Ok.
+        // The forwarder must loop on EINTR; a regression that
+        // continues past Interrupted would lose the prompt-
+        // visibility guarantee but not surface here -- this
+        // test pins the retry by counting flush calls.
+        #[derive(Clone, Default)]
+        struct InterruptFlush {
+            inner: Arc<Mutex<InterruptFlushState>>,
+        }
+        #[derive(Default)]
+        struct InterruptFlushState {
+            sink: Vec<u8>,
+            flush_attempts: usize,
+        }
+        impl Write for InterruptFlush {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                self.inner.lock().unwrap().sink.extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                let mut s = self.inner.lock().unwrap();
+                s.flush_attempts += 1;
+                if s.flush_attempts <= 2 {
+                    Err(io::Error::new(io::ErrorKind::Interrupted, "trip"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        let writer = InterruptFlush::default();
+        let probe = writer.inner.clone();
+        let exit = forward_blocking(Cursor::new(b"x".to_vec()), writer).unwrap();
+        assert_eq!(exit, ForwarderExit::ReaderEof { bytes: 1 });
+        // Per-chunk: 1 attempt fails (Interrupted), retried,
+        // then EOF flush succeeds. At minimum 3 attempts.
+        assert!(
+            probe.lock().unwrap().flush_attempts >= 3,
+            "expected flush retry on Interrupted, got {} attempts",
+            probe.lock().unwrap().flush_attempts
+        );
+    }
+
+    #[test]
+    fn spawn_forwarder_classifies_eof_flush_broken_pipe_as_writer_closed() {
+        // Buffered writers may stage bytes whose first error
+        // surfaces only at the final flush. Policy: EOF flush
+        // BrokenPipe -> WriterClosed (not silently ReaderEof).
+        struct BrokenPipeOnFlush;
+        impl Write for BrokenPipeOnFlush {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, "boom"))
+            }
+        }
+        let exit = forward_blocking(Cursor::new(b"abc".to_vec()), BrokenPipeOnFlush).unwrap();
+        assert!(
+            matches!(exit, ForwarderExit::WriterClosed { .. }),
+            "expected WriterClosed, got {exit:?}"
+        );
+    }
+
+    #[test]
+    fn spawn_forwarder_propagates_eof_flush_other_errors() {
+        // Per-chunk flush short-circuits before EOF here
+        // (write succeeds, flush errors with PermissionDenied).
+        struct DenyOnFlush;
+        impl Write for DenyOnFlush {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Err(io::Error::new(io::ErrorKind::PermissionDenied, "nope"))
+            }
+        }
+        let err = forward_blocking(Cursor::new(b"x".to_vec()), DenyOnFlush).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
     }
 
     #[test]
