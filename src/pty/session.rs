@@ -548,15 +548,17 @@ mod tests {
         }
     }
 
-    /// Build a pump whose forwarders never finish (block on a
-    /// channel that's never closed). Used for "join exceeds
-    /// budget" tests.
+    /// Build a pump whose forwarders never finish (block forever
+    /// in `read()`). Used for "join exceeds budget" tests; the
+    /// surrounding test must rely on the supervisor's bounded
+    /// budgets (kill + join detach) for termination.
     fn hung_pump() -> IoPump {
         struct ForeverReader;
         impl io::Read for ForeverReader {
             fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
-                std::thread::sleep(Duration::from_millis(200));
-                Ok(0)
+                loop {
+                    std::thread::park_timeout(Duration::from_secs(60));
+                }
             }
         }
         struct DiscardWriter;
