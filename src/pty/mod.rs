@@ -26,6 +26,8 @@
 //! by [`default_body`]; PR 2 (#22) wires them into the spawn
 //! call.
 
+mod size;
+
 use std::ffi::OsString;
 use std::process::ExitCode;
 
