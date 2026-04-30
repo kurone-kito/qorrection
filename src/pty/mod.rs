@@ -438,6 +438,20 @@ mod tests {
         assert!(result.is_ok(), "expected ok, got {result:?}");
     }
 
+    /// And it must propagate a non-zero exit code through the
+    /// shared `exit::map_exit_status` mapping rather than
+    /// silently coercing every spawn into success. Pins the
+    /// "transparent passthrough" contract that rubber-duck
+    /// finding #5 (PR #91) called out as untested.
+    #[cfg(unix)]
+    #[test]
+    fn non_tty_passthrough_propagates_nonzero_exit() {
+        let args = [OsString::from("-c"), OsString::from("exit 7")];
+        let result = non_tty_passthrough(&OsString::from("sh"), &args)
+            .expect("sh -c 'exit 7' must complete");
+        assert_eq!(format!("{result:?}"), format!("{:?}", ExitCode::from(7)));
+    }
+
     /// And a missing command surfaces as `Error::Spawn` so the
     /// top-level mapping (`NotFound → 127`) applies.
     #[test]
