@@ -39,10 +39,24 @@
 //!
 //! `host_to_child` is the only forwarder that may stay blocked
 //! after the child exits — it can be sitting in `read()` on real
-//! host stdin with no graceful cancellation primitive. If the
-//! join exceeds [`Deadlines::forwarder_join_budget`] we emit a
-//! `tracing::warn!`, drop the join handle (detaching the OS
-//! thread), and let the parent process termination clean it up.
+//! host stdin with no graceful cancellation primitive. The
+//! supervisor uses two separate join budgets to handle the two
+//! directions:
+//!
+//! - [`Deadlines::forwarder_join_budget`] (5 s in production)
+//!   is the budget for the `ChildToHost` direction. If the
+//!   join exceeds that budget we emit `tracing::warn!`, drop
+//!   the join handle (detaching the OS thread), and let the
+//!   parent process termination clean it up.
+//! - [`Deadlines::host_to_child_post_exit_budget`] is **zero
+//!   in production**. The host->stdin reader has nothing
+//!   useful to deliver after the child is gone, so a
+//!   non-blocking `is_finished()` check decides between
+//!   extracting the real outcome and detaching silently
+//!   (`tracing::debug!`). Without the split, every clean
+//!   interactive exit would block for 5 s waiting on a
+//!   `read()` call that can't be cancelled.
+//!
 //! A first-class cancellation API for forwarders is tracked as a
 //! follow-up — see issue #89 (`pty: cancellable forwarders for
 //! non-EOF host stdin`).
