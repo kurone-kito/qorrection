@@ -811,7 +811,18 @@ mod real_session {
         let sink = SharedSink::default();
         let pump = start_io_pump(&mut session, Cursor::new(host_stdin), sink.clone())
             .expect("start_io_pump");
-        let result = run_pump_session(session, pump);
+        let result = run_pump_session_with(
+            PtyChild {
+                child: session.child,
+            },
+            pump,
+            supervisor_deadlines(),
+        );
+        // Keep `master` alive until after the supervisor returns
+        // (mirrors the run_pump_session contract that the master
+        // must outlive the wait/drain phase) by binding it
+        // explicitly here, then dropping it at the end of scope.
+        drop(session.master);
         (result, sink.snapshot())
     }
 
@@ -853,7 +864,15 @@ mod real_session {
         // sends SIGHUP (verified in portable-pty 0.9.0
         // src/lib.rs:328), not SIGTERM, so we expect signum=1.
         term.kill().expect("send SIGHUP to child via clone_killer");
-        let res = run_pump_session(session, pump);
+        let res = run_pump_session_with(
+            PtyChild {
+                child: session.child,
+            },
+            pump,
+            supervisor_deadlines(),
+        );
+        // Keep `master` alive across the supervisor call.
+        drop(session.master);
         let err = res.expect_err("signal death must be Err");
         match err {
             Error::Signal { signum } => assert_eq!(
@@ -890,13 +909,5 @@ mod real_session {
             s.contains("hello"),
             "buffered child output truncated: captured = {s:?}"
         );
-    }
-
-    // Suppress warnings for unused supervisor_deadlines until a
-    // future test needs the custom budget shape; production
-    // entry uses Deadlines::production() under the hood.
-    #[allow(dead_code)]
-    fn _keep_deadlines_used() -> Deadlines {
-        supervisor_deadlines()
     }
 }
