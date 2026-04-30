@@ -71,7 +71,19 @@ pub(crate) fn spawn_child(
     let system = native_pty_system();
     let pair = system.openpty(size).map_err(Error::Pty)?;
 
-    let mut builder = CommandBuilder::new(command);
+    // Resolve the executable to a form portable-pty's PATH walk
+    // handles correctly. Its Unix resolver (cmdbuilder.rs:417)
+    // only treats a path as cwd-relative when it starts with
+    // `./` or `../`; *other* relative paths with a separator
+    // (e.g. `subdir/tool`) are joined with each PATH entry, so a
+    // local `./subdir/tool` would never resolve. POSIX
+    // `execvp` instead treats any name containing a separator
+    // as a literal path. We patch the gap by canonicalising
+    // such inputs to an absolute path (when CWD is available)
+    // before handing off to `CommandBuilder`. (RD finding #2.)
+    let resolved_command = resolve_command_path(command);
+
+    let mut builder = CommandBuilder::new(&resolved_command);
     for arg in args {
         builder.arg(arg);
     }
@@ -84,6 +96,68 @@ pub(crate) fn spawn_child(
 
     let child = pair.slave.spawn_command(builder).map_err(map_spawn_error)?;
     Ok(SpawnedSession { child, pair })
+}
+
+/// Canonicalise `command` to a form portable-pty's resolver
+/// treats correctly:
+///
+/// - Bare names (no separator) are returned as-is so PATH search
+///   continues to apply.
+/// - Absolute paths and `./`/`../`-prefixed paths are returned
+///   as-is (portable-pty's resolver handles them literally).
+/// - Other relative paths with a separator are joined onto the
+///   current working directory so portable-pty sees an absolute
+///   path. If `current_dir()` fails we fall back to the original
+///   input -- portable-pty's behaviour will then surface through
+///   [`map_spawn_error`], same as today.
+fn resolve_command_path(command: &OsStr) -> std::ffi::OsString {
+    let p = Path::new(command);
+    if p.is_absolute() {
+        return command.to_owned();
+    }
+    if !path_has_separator(command) {
+        return command.to_owned();
+    }
+    if is_cwd_relative_prefix(p) {
+        return command.to_owned();
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => cwd.join(p).into_os_string(),
+        Err(_) => command.to_owned(),
+    }
+}
+
+/// True iff `command` contains a path-separator byte. Unix uses
+/// `/`; on Windows portable-pty also accepts `\\`. We only run
+/// the resolution on Unix today (preflight is also `cfg(unix)`),
+/// but keep the detector cross-platform so PR 5 does not have to
+/// revisit the helper.
+fn path_has_separator(command: &OsStr) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        command.as_bytes().contains(&b'/')
+    }
+    #[cfg(not(unix))]
+    {
+        // Best-effort lossy check: covers ASCII separators which
+        // are the overwhelmingly common case. Non-ASCII Windows
+        // paths still go through portable-pty's own resolver.
+        let s = command.to_string_lossy();
+        s.contains('/') || s.contains('\\')
+    }
+}
+
+/// `./foo` and `../foo` (and their `\\` Windows analogues) are
+/// the prefixes portable-pty's resolver handles literally. Other
+/// relative-with-separator inputs (e.g. `subdir/foo`) need the
+/// canonicalisation in [`resolve_command_path`].
+fn is_cwd_relative_prefix(p: &Path) -> bool {
+    use std::path::Component;
+    matches!(
+        p.components().next(),
+        Some(Component::CurDir) | Some(Component::ParentDir)
+    )
 }
 
 /// Defensive secondary classifier for failures that slip past
@@ -393,6 +467,48 @@ mod tests {
             matches!(err, Error::Pty(_)),
             "expected Error::Pty, got {err:?}"
         );
+    }
+
+    // ---- resolve_command_path (RD finding #2) ---------------
+    #[cfg(unix)]
+    #[test]
+    fn resolve_command_path_passes_bare_name_through_unchanged() {
+        let out = resolve_command_path(OsStr::new("ls"));
+        assert_eq!(out, std::ffi::OsString::from("ls"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_command_path_passes_absolute_path_through_unchanged() {
+        let out = resolve_command_path(OsStr::new("/bin/ls"));
+        assert_eq!(out, std::ffi::OsString::from("/bin/ls"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_command_path_passes_dot_relative_path_through_unchanged() {
+        let out = resolve_command_path(OsStr::new("./tool"));
+        assert_eq!(out, std::ffi::OsString::from("./tool"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_command_path_passes_parent_relative_path_through_unchanged() {
+        let out = resolve_command_path(OsStr::new("../tool"));
+        assert_eq!(out, std::ffi::OsString::from("../tool"));
+    }
+
+    // The critical case: `subdir/tool` is a separator-bearing
+    // relative path that portable-pty's resolver would otherwise
+    // join onto each PATH entry. We must convert it to absolute
+    // so portable-pty treats it literally.
+    #[cfg(unix)]
+    #[test]
+    fn resolve_command_path_canonicalises_relative_with_separator_to_absolute() {
+        let cwd = std::env::current_dir().expect("cwd");
+        let out = resolve_command_path(OsStr::new("subdir/tool"));
+        let expected = cwd.join("subdir/tool").into_os_string();
+        assert_eq!(out, expected);
     }
 
     // ---- Unix-only end-to-end real-spawn tests --------------
