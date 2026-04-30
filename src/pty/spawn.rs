@@ -68,6 +68,25 @@ pub(crate) fn spawn_child(
     #[cfg(unix)]
     preflight_command(command)?;
 
+    // Resolve the parent's CWD up-front so the entire spawn
+    // pipeline (relative-path canonicalisation + child cwd
+    // anchoring) sees a single, consistent snapshot. We treat a
+    // failed `current_dir()` lookup as a spawn-setup failure
+    // because portable-pty's `CommandBuilder::as_command`
+    // (cmdbuilder.rs:501-507) silently substitutes `$HOME` when
+    // no cwd is configured -- which would silently run the
+    // wrapped tool from a different directory than the one the
+    // caller invoked us from, breaking relative file arguments
+    // and project-aware tooling. Failing here surfaces the
+    // problem as `Error::Spawn` (-> exit 126) rather than
+    // hiding it.
+    let cwd = std::env::current_dir().map_err(|e| {
+        Error::Spawn(io::Error::new(
+            e.kind(),
+            format!("failed to resolve current working directory for PTY child: {e}"),
+        ))
+    })?;
+
     let system = native_pty_system();
     let pair = system.openpty(size).map_err(Error::Pty)?;
 
@@ -79,46 +98,45 @@ pub(crate) fn spawn_child(
     // local `./subdir/tool` would never resolve. POSIX
     // `execvp` instead treats any name containing a separator
     // as a literal path. We patch the gap by canonicalising
-    // such inputs to an absolute path (when CWD is available)
+    // such inputs to an absolute path against the snapshot CWD
     // before handing off to `CommandBuilder`. (RD finding #2.)
-    let resolved_command = resolve_command_path(command);
+    let resolved_command = resolve_command_path(command, &cwd);
 
     let mut builder = CommandBuilder::new(&resolved_command);
     for arg in args {
         builder.arg(arg);
     }
-    // Best-effort: anchor the child to the parent's CWD if the
-    // call succeeds. Mirrors `tests/pty_smoke.rs`: silently
-    // inherit when `current_dir()` fails (e.g. CWD deleted).
-    if let Ok(cwd) = std::env::current_dir() {
-        builder.cwd(cwd);
-    }
+    builder.cwd(&cwd);
 
     let child = pair.slave.spawn_command(builder).map_err(map_spawn_error)?;
     Ok(SpawnedSession { child, pair })
 }
 
-/// Canonicalise `command` to a form portable-pty's resolver
-/// treats correctly:
+/// Canonicalise `command` against the supplied `cwd` snapshot.
 ///
 /// - Bare names (no separator) are returned as-is so PATH search
 ///   continues to apply.
 /// - Absolute paths and `./`/`../`-prefixed paths are returned
 ///   as-is (portable-pty's resolver handles them literally).
-/// - Other relative paths with a separator are joined onto the
-///   current working directory so portable-pty sees an absolute
-///   path. If `current_dir()` fails we fall back to the original
-///   input -- portable-pty's behaviour will then surface through
-///   [`map_spawn_error`], same as today.
+/// - Other relative paths with a separator are joined onto
+///   `cwd` so portable-pty sees an absolute path -- otherwise
+///   portable-pty's resolver (cmdbuilder.rs:417) would PATH-walk
+///   them and never find a local `subdir/tool`.
+///
+/// Taking `cwd` as an argument (instead of calling
+/// `std::env::current_dir()` here) means the whole spawn pipeline
+/// shares one CWD snapshot: caller resolves CWD up-front, fails
+/// fast on lookup error, then hands the same `Path` to
+/// `resolve_command_path` and `CommandBuilder::cwd`.
 ///
 /// **Documented contract deviation**: when we rewrite a relative
 /// path like `subdir/tool` to its absolute form, the child sees
 /// the absolute path as its `argv[0]` because portable-pty
-/// 0.9's `CommandBuilder` does not expose a way to separate the
-/// resolved executable path from `argv[0]`. The alternative is
-/// silently failing to spawn the program at all (the bug this
-/// helper exists to fix), which is strictly worse for every
-/// known qorrection wrap target -- the arming allowlist
+/// 0.9's `CommandBuilder` derives `argv[0]` from `args[0]` (the
+/// program path you supplied). The alternative is silently
+/// failing to spawn the program at all (the bug this helper
+/// exists to fix), which is strictly worse for every known
+/// qorrection wrap target -- the arming allowlist
 /// (`copilot`, `codex`, `claude`, `aichat`, `gemini`, `qwen`,
 /// `ollama`) ships only as bare names, none inspect `argv[0]`
 /// for its relative form, and operators who do invoke an arbitrary
@@ -127,7 +145,7 @@ pub(crate) fn spawn_child(
 /// preserved, the right place to fix it is upstream in
 /// portable-pty (or by replacing portable-pty with a builder
 /// that separates the two) -- not here.
-fn resolve_command_path(command: &OsStr) -> std::ffi::OsString {
+fn resolve_command_path(command: &OsStr, cwd: &Path) -> std::ffi::OsString {
     let p = Path::new(command);
     if p.is_absolute() {
         return command.to_owned();
@@ -138,10 +156,7 @@ fn resolve_command_path(command: &OsStr) -> std::ffi::OsString {
     if is_cwd_relative_prefix(p) {
         return command.to_owned();
     }
-    match std::env::current_dir() {
-        Ok(cwd) => cwd.join(p).into_os_string(),
-        Err(_) => command.to_owned(),
-    }
+    cwd.join(p).into_os_string()
 }
 
 /// True iff `command` contains a path-separator byte. Unix uses
@@ -549,40 +564,46 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn resolve_command_path_passes_bare_name_through_unchanged() {
-        let out = resolve_command_path(OsStr::new("ls"));
+        let cwd = Path::new("/tmp");
+        let out = resolve_command_path(OsStr::new("ls"), cwd);
         assert_eq!(out, std::ffi::OsString::from("ls"));
     }
 
     #[cfg(unix)]
     #[test]
     fn resolve_command_path_passes_absolute_path_through_unchanged() {
-        let out = resolve_command_path(OsStr::new("/bin/ls"));
+        let cwd = Path::new("/tmp");
+        let out = resolve_command_path(OsStr::new("/bin/ls"), cwd);
         assert_eq!(out, std::ffi::OsString::from("/bin/ls"));
     }
 
     #[cfg(unix)]
     #[test]
     fn resolve_command_path_passes_dot_relative_path_through_unchanged() {
-        let out = resolve_command_path(OsStr::new("./tool"));
+        let cwd = Path::new("/tmp");
+        let out = resolve_command_path(OsStr::new("./tool"), cwd);
         assert_eq!(out, std::ffi::OsString::from("./tool"));
     }
 
     #[cfg(unix)]
     #[test]
     fn resolve_command_path_passes_parent_relative_path_through_unchanged() {
-        let out = resolve_command_path(OsStr::new("../tool"));
+        let cwd = Path::new("/tmp");
+        let out = resolve_command_path(OsStr::new("../tool"), cwd);
         assert_eq!(out, std::ffi::OsString::from("../tool"));
     }
 
     // The critical case: `subdir/tool` is a separator-bearing
     // relative path that portable-pty's resolver would otherwise
     // join onto each PATH entry. We must convert it to absolute
-    // so portable-pty treats it literally.
+    // so portable-pty treats it literally. Pass an explicit cwd
+    // snapshot rather than reading process state, so the test is
+    // deterministic and parallel-safe.
     #[cfg(unix)]
     #[test]
     fn resolve_command_path_canonicalises_relative_with_separator_to_absolute() {
-        let cwd = std::env::current_dir().expect("cwd");
-        let out = resolve_command_path(OsStr::new("subdir/tool"));
+        let cwd = Path::new("/some/snapshot/cwd");
+        let out = resolve_command_path(OsStr::new("subdir/tool"), cwd);
         let expected = cwd.join("subdir/tool").into_os_string();
         assert_eq!(out, expected);
     }
