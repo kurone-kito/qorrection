@@ -13,6 +13,7 @@
 pub mod anim;
 pub mod cli;
 pub mod error;
+pub mod pty;
 #[cfg(unix)]
 pub mod signals;
 pub mod term;
@@ -121,10 +122,7 @@ pub fn run(args: Vec<std::ffi::OsString>) -> Result<ExitCode> {
             println!("qorrection {}", env!("CARGO_PKG_VERSION"));
             Ok(ExitCode::SUCCESS)
         }
-        cli::Invocation::Wrap { .. } => {
-            eprintln!("qorrection: PTY wrap pending");
-            Ok(ExitCode::from(2))
-        }
+        cli::Invocation::Wrap { command, args } => pty::run_session(command, args),
     }
 }
 

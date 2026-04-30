@@ -10,9 +10,10 @@
 //! Rules (locked v0.1, see plan §6 D-RAWMODE):
 //!
 //! - Acquire only when **both** stdin and stdout are TTYs. The
-//!   non-TTY path bypasses PTY entirely (D-NONTTY) and so must
-//!   also bypass raw mode -- touching termios on a pipe is
-//!   undefined.
+//!   eventual non-TTY path will bypass PTY entirely (D-NONTTY,
+//!   tracked under #29 / #30 / #31); until that lands, raw-mode
+//!   acquisition must still be skipped when either stream is
+//!   non-TTY -- touching termios on a pipe is undefined.
 //! - Restoration runs in [`Drop`], so any panic between
 //!   acquisition and the end of the session unwinds back through
 //!   the guard and disables raw mode on the way out.
@@ -28,37 +29,81 @@ pub fn should_arm(caps: &TerminalCaps) -> bool {
     caps.stdin_is_tty && caps.stdout_is_tty
 }
 
-/// RAII guard that disables raw mode on [`Drop`] when armed.
+/// RAII guard that runs a "disable" hook on [`Drop`] when armed.
 ///
 /// Construct via [`acquire`]. Holding the guard alive (e.g. as
 /// a local in `pty::run_session`) keeps raw mode engaged; let
 /// it drop to restore the cooked terminal.
-#[derive(Debug)]
+///
+/// The disable side-effect is stored as an `FnOnce` closure so
+/// unit tests can substitute a counter-incrementing hook and
+/// assert restoration semantics without touching real termios.
+/// Production callers ([`acquire`]) install a best-effort hook
+/// that calls `crossterm::terminal::disable_raw_mode` and
+/// **discards** any error -- a destructor cannot meaningfully
+/// recover from a failed restore, and the user is already in a
+/// bad state if it fails. The hook itself returns `()`.
 pub struct RawGuard {
-    armed: bool,
+    on_drop: Option<Box<dyn FnOnce() + Send + 'static>>,
+}
+
+impl std::fmt::Debug for RawGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RawGuard")
+            .field("armed", &self.is_armed())
+            .finish()
+    }
 }
 
 impl RawGuard {
     /// Whether this guard currently owns the raw-mode state.
     pub fn is_armed(&self) -> bool {
-        self.armed
+        self.on_drop.is_some()
     }
 
     /// Construct a no-op guard for callers that have already
     /// decided not to enter raw mode (e.g. the non-TTY bypass
     /// path).
     pub fn noop() -> Self {
-        Self { armed: false }
+        Self { on_drop: None }
+    }
+
+    /// Test-only constructor that produces an armed guard whose
+    /// drop hook is the supplied closure. Lets unit tests assert
+    /// Drop semantics (normal return, panic) without enabling
+    /// real raw mode.
+    ///
+    /// # Panics in the hook
+    ///
+    /// The hook MUST NOT panic. If a `RawGuard` is dropped during
+    /// unwinding (e.g. inside a `catch_unwind` after `panic!`)
+    /// and its hook panics, the second panic aborts the process.
+    /// Test hooks should only touch `Arc<AtomicUsize>` /
+    /// `Arc<Mutex<_>>` style observers.
+    #[cfg(test)]
+    pub(crate) fn with_disable_hook<H>(hook: H) -> Self
+    where
+        H: FnOnce() + Send + 'static,
+    {
+        Self {
+            on_drop: Some(Box::new(hook)),
+        }
     }
 }
 
 impl Drop for RawGuard {
     fn drop(&mut self) {
-        if self.armed {
-            // Best-effort: if we cannot disable raw mode the
-            // terminal is already in a bad state and there is
-            // no useful recovery from a destructor.
-            let _ = crossterm::terminal::disable_raw_mode();
+        // `Option::take` is defensive — `Drop::drop` is called at
+        // most once by the language — but it also enforces that
+        // the boxed `FnOnce` is consumed exactly once.
+        //
+        // The production hook is `crossterm::disable_raw_mode`,
+        // which is best-effort: if it fails the terminal is
+        // already in a bad state and there is no useful recovery
+        // from a destructor. Hooks must not panic — see
+        // [`RawGuard::with_disable_hook`].
+        if let Some(hook) = self.on_drop.take() {
+            hook();
         }
     }
 }
@@ -68,16 +113,44 @@ impl Drop for RawGuard {
 /// Returns a [`RawGuard`] in either case; the guard is a no-op
 /// when raw mode was not entered.
 pub fn acquire(caps: &TerminalCaps) -> Result<RawGuard> {
+    acquire_with(
+        caps,
+        || crossterm::terminal::enable_raw_mode().map_err(Into::into),
+        || {
+            || {
+                let _ = crossterm::terminal::disable_raw_mode();
+            }
+        },
+    )
+}
+
+/// Decision + wiring core, parameterised over the side-effecting
+/// `enable` call and the `make_disable` factory that produces the
+/// drop hook. Lets unit tests cover every armed-path branch
+/// (non-TTY skip, enable success, enable failure) without
+/// touching real termios.
+fn acquire_with<E, MD, D>(caps: &TerminalCaps, enable: E, make_disable: MD) -> Result<RawGuard>
+where
+    E: FnOnce() -> Result<()>,
+    MD: FnOnce() -> D,
+    D: FnOnce() + Send + 'static,
+{
     if !should_arm(caps) {
         return Ok(RawGuard::noop());
     }
-    crossterm::terminal::enable_raw_mode()?;
-    Ok(RawGuard { armed: true })
+    enable()?;
+    Ok(RawGuard {
+        on_drop: Some(Box::new(make_disable())),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     fn caps(stdin_tty: bool, stdout_tty: bool) -> TerminalCaps {
         TerminalCaps {
@@ -116,5 +189,121 @@ mod tests {
         assert!(!g.is_armed());
         let g = acquire(&caps(true, false)).unwrap();
         assert!(!g.is_armed());
+    }
+
+    #[test]
+    fn armed_guard_runs_hook_on_normal_drop() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        {
+            let observed = Arc::clone(&counter);
+            let _g = RawGuard::with_disable_hook(move || {
+                observed.fetch_add(1, Ordering::SeqCst);
+            });
+        }
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn armed_guard_runs_hook_on_panic() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&counter);
+        // Build the guard *inside* the catch_unwind closure so
+        // only `Arc<AtomicUsize>` crosses the unwind boundary --
+        // this avoids needing `AssertUnwindSafe` on `RawGuard`.
+        let result = std::panic::catch_unwind(move || {
+            let _g = RawGuard::with_disable_hook(move || {
+                observed.fetch_add(1, Ordering::SeqCst);
+            });
+            panic!("boom");
+        });
+        assert!(result.is_err());
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn acquire_with_non_tty_skips_enable_and_disable() {
+        let enable_calls = Arc::new(AtomicUsize::new(0));
+        let disable_calls = Arc::new(AtomicUsize::new(0));
+        let enable_observed = Arc::clone(&enable_calls);
+        let disable_observed = Arc::clone(&disable_calls);
+
+        let guard = acquire_with(
+            &caps(false, false),
+            move || {
+                enable_observed.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+            move || {
+                move || {
+                    disable_observed.fetch_add(1, Ordering::SeqCst);
+                }
+            },
+        )
+        .unwrap();
+        assert!(!guard.is_armed());
+        drop(guard);
+
+        assert_eq!(enable_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(disable_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn acquire_with_tty_calls_enable_once_and_disable_on_drop() {
+        let enable_calls = Arc::new(AtomicUsize::new(0));
+        let disable_calls = Arc::new(AtomicUsize::new(0));
+        let enable_observed = Arc::clone(&enable_calls);
+        let disable_observed = Arc::clone(&disable_calls);
+
+        {
+            let guard = acquire_with(
+                &caps(true, true),
+                move || {
+                    enable_observed.fetch_add(1, Ordering::SeqCst);
+                    Ok(())
+                },
+                move || {
+                    move || {
+                        disable_observed.fetch_add(1, Ordering::SeqCst);
+                    }
+                },
+            )
+            .unwrap();
+            assert!(guard.is_armed());
+            assert_eq!(enable_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(disable_calls.load(Ordering::SeqCst), 0);
+        }
+
+        assert_eq!(enable_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(disable_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn acquire_with_tty_propagates_enable_error_and_skips_disable() {
+        // Track both the outer factory call count and the inner
+        // hook call count so the test pins down "no hook is even
+        // constructed when enable fails", not just "no hook ran".
+        let make_disable_calls = Arc::new(AtomicUsize::new(0));
+        let disable_calls = Arc::new(AtomicUsize::new(0));
+        let make_disable_observed = Arc::clone(&make_disable_calls);
+        let disable_observed = Arc::clone(&disable_calls);
+
+        let result = acquire_with(
+            &caps(true, true),
+            || {
+                Err(crate::Error::Terminal(std::io::Error::other(
+                    "synthetic enable failure",
+                )))
+            },
+            move || {
+                make_disable_observed.fetch_add(1, Ordering::SeqCst);
+                move || {
+                    disable_observed.fetch_add(1, Ordering::SeqCst);
+                }
+            },
+        );
+
+        assert!(matches!(result, Err(crate::Error::Terminal(_))));
+        assert_eq!(make_disable_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(disable_calls.load(Ordering::SeqCst), 0);
     }
 }
