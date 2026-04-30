@@ -68,8 +68,14 @@ where
 
 /// Placeholder body for PR 1. PR 5 (#26) replaces this with the
 /// real PTY pump and removes the diagnostic.
+///
+/// Uses `\r\n` rather than `\n` because, on a real interactive
+/// TTY, the surrounding [`run_session_with`] is now holding the
+/// terminal in raw mode where output post-processing (newline
+/// translation) is disabled. A bare `\n` would leave the cursor
+/// dangling at the end of the line.
 fn default_body(_command: &OsString, _args: &[OsString]) -> Result<ExitCode> {
-    eprintln!("qorrection: PTY wrap pending");
+    eprint!("qorrection: PTY wrap pending\r\n");
     Ok(ExitCode::from(2))
 }
 
@@ -124,6 +130,30 @@ mod tests {
             },
         )
         .unwrap();
+    }
+
+    #[test]
+    fn run_session_with_calls_acquire_exactly_once() {
+        // Pin the "acquired exactly once per session" half of the
+        // invariant explicitly. Drop-counter tests cover the
+        // restore half indirectly; this asserts the entry-side
+        // contract directly so future bodies cannot regress it.
+        let acquire_calls = Arc::new(AtomicUsize::new(0));
+        let acquire_observed = Arc::clone(&acquire_calls);
+
+        let _exit = run_session_with(
+            caps(),
+            OsString::from("dummy"),
+            Vec::new(),
+            move |_caps| {
+                acquire_observed.fetch_add(1, Ordering::SeqCst);
+                Ok(RawGuard::noop())
+            },
+            |_cmd, _args| Ok(ExitCode::SUCCESS),
+        )
+        .unwrap();
+
+        assert_eq!(acquire_calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
