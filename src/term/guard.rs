@@ -290,7 +290,12 @@ mod tests {
 
     #[test]
     fn acquire_with_tty_propagates_enable_error_and_skips_disable() {
+        // Track both the outer factory call count and the inner
+        // hook call count so the test pins down "no hook is even
+        // constructed when enable fails", not just "no hook ran".
+        let make_disable_calls = Arc::new(AtomicUsize::new(0));
         let disable_calls = Arc::new(AtomicUsize::new(0));
+        let make_disable_observed = Arc::clone(&make_disable_calls);
         let disable_observed = Arc::clone(&disable_calls);
 
         let result = acquire_with(
@@ -301,6 +306,7 @@ mod tests {
                 )))
             },
             move || {
+                make_disable_observed.fetch_add(1, Ordering::SeqCst);
                 move || {
                     disable_observed.fetch_add(1, Ordering::SeqCst);
                 }
@@ -308,6 +314,7 @@ mod tests {
         );
 
         assert!(matches!(result, Err(crate::Error::Terminal(_))));
+        assert_eq!(make_disable_calls.load(Ordering::SeqCst), 0);
         assert_eq!(disable_calls.load(Ordering::SeqCst), 0);
     }
 }
