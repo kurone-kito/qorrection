@@ -234,10 +234,12 @@ where
                 return Err(wrap_io("forwarder failed; kill escalation failed", e));
             }
             let wait_outcome = child.wait();
-            // The wait succeeded (or definitively failed): the
-            // guard's job is done either way.
-            guard.disarm();
-            if let Err(e) = wait_outcome {
+            // Only disarm when wait() actually consumed a status;
+            // a failed wait() means the child may still be alive,
+            // in which case drop() should retry the kill.
+            if wait_outcome.is_ok() {
+                guard.disarm();
+            } else if let Err(e) = &wait_outcome {
                 tracing::warn!(error = %e, "supervisor: wait() after kill failed");
             }
             // Pull the actual io::Error out for the Pty wrapper.
@@ -457,7 +459,7 @@ mod tests {
             s.kills += 1;
             // Once killed, status becomes SIGTERM and try_wait
             // returns immediately on the next call.
-            s.scheduled = ExitStatus::with_signal("Terminated");
+            s.scheduled = ExitStatus::with_signal("Signal 15");
             s.polls_remaining = 0;
             Ok(())
         }
@@ -500,7 +502,7 @@ mod tests {
         struct ForeverReader;
         impl io::Read for ForeverReader {
             fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
-                std::thread::sleep(Duration::from_secs(60));
+                std::thread::sleep(Duration::from_millis(200));
                 Ok(0)
             }
         }
@@ -545,7 +547,7 @@ mod tests {
 
     #[test]
     fn signal_status_propagates_as_signal_error() {
-        let child = MockChild::new(ExitStatus::with_signal("Terminated"), 0);
+        let child = MockChild::new(ExitStatus::with_signal("Signal 15"), 0);
         let err = run_pump_session_with(child, quiet_pump(), fast_deadlines())
             .expect_err("signal must be Err");
         assert!(matches!(err, Error::Signal { signum: 15 }));
@@ -615,7 +617,7 @@ mod tests {
                 }
                 // Subsequent reads block forever to avoid
                 // races where the reader EOFs first.
-                std::thread::sleep(Duration::from_secs(60));
+                std::thread::sleep(Duration::from_millis(200));
                 Ok(0)
             }
         }
