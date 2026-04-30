@@ -48,6 +48,7 @@ words:
   - embark
   - greppable
   - hsomething
+  - illumos
   - kito
   - jvim
   - kyuukyuu
@@ -57,6 +58,11 @@ words:
   - qorrection
   - qwen
   - rexpect
+  - sigcld
+  - sigpoll
+  - sigpwr
+  - sigstkflt
+  - sigunused
   - swatinem
   - toctou
   - xclaude
