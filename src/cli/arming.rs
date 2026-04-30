@@ -154,7 +154,10 @@ mod tests {
         ("claude.exe.cmd", false), // strips .cmd, leaves "claude.exe" which is not allowlisted
         // dot-leading: stem becomes ".claude", not "claude"
         (".claude.exe", false),
-        // empty stem after strip
+        // suffix-only inputs: strip_known_suffix refuses to
+        // strip when the stem would be empty (it requires
+        // bytes.len() > suffix.len()), so the input is kept
+        // verbatim and simply fails the allowlist match.
         (".exe", false),
         (".cmd", false),
         (".bat", false),
