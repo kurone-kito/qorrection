@@ -44,7 +44,8 @@
 //! `tracing::warn!`, drop the join handle (detaching the OS
 //! thread), and let the parent process termination clean it up.
 //! A first-class cancellation API for forwarders is tracked as a
-//! follow-up — see the issue linked from this PR's description.
+//! follow-up — see issue #89 (`pty: cancellable forwarders for
+//! non-EOF host stdin`).
 
 use std::io;
 use std::process::ExitCode;
