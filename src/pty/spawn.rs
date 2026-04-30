@@ -269,16 +269,46 @@ fn classify_path(p: &Path, display_path: &Path) -> Result<()> {
             format!("is a directory: {}", display_path.display()),
         )));
     }
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if meta.permissions().mode() & 0o111 == 0 {
-            return Err(Error::Spawn(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                format!("not executable: {}", display_path.display()),
-            )));
-        }
+    // Executable check: ask the kernel whether the *current* uid/gid
+    // can actually execute the file (`access(X_OK)`), rather than
+    // approximating with the raw mode bits. portable-pty's resolver
+    // (cmdbuilder.rs:455-489) uses the same primitive, so this keeps
+    // our preflight in sync with the eventual spawn semantics --
+    // otherwise an owner-only `0o100` binary viewed by another user
+    // would pass preflight here and then fail inside portable-pty as
+    // a non-`io::Error` anyhow message, downgrading the contract from
+    // `Spawn(PermissionDenied)` (-> exit 126) to `Pty` (-> exit 1).
+    if !access_x_ok(p) {
+        return Err(Error::Spawn(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("not executable: {}", display_path.display()),
+        )));
     }
     Ok(())
+}
+
+/// Wrapper around `libc::access(path, X_OK)` that returns true iff
+/// the current real uid/gid is permitted to execute `path`. We stay
+/// consistent with portable-pty's `nix::unistd::access(_, X_OK)` call
+/// so the preflight reproduces the same admit/reject decision the
+/// eventual spawn would make.
+fn access_x_ok(p: &Path) -> bool {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    let c = match CString::new(p.as_os_str().as_bytes()) {
+        Ok(c) => c,
+        // Embedded NUL byte cannot be a real filesystem path, so the
+        // safe answer is "not executable" -- caller then surfaces
+        // PermissionDenied, which is correct enough.
+        Err(_) => return false,
+    };
+    // SAFETY: `c.as_ptr()` is a valid, NUL-terminated C string for
+    // the duration of this call (`c` is alive on the next line).
+    // `libc::access` reads the path string and returns an `int`; it
+    // performs no writes through the pointer and has no other
+    // preconditions on the calling thread.
+    let rc = unsafe { libc::access(c.as_ptr(), libc::X_OK) };
+    rc == 0
 }
 
 #[cfg(test)]
