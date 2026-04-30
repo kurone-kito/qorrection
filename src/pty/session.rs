@@ -116,8 +116,6 @@ impl Deadlines {
 pub(crate) trait SupervisedChild {
     /// Non-blocking wait. Wraps `portable_pty::Child::try_wait`.
     fn try_wait(&mut self) -> io::Result<Option<ExitStatus>>;
-    /// Blocking wait. Wraps `portable_pty::Child::wait`.
-    fn wait(&mut self) -> io::Result<ExitStatus>;
     /// Produce a fresh killer handle. Wraps
     /// `portable_pty::Child::clone_killer`.
     fn clone_killer(&mut self) -> Box<dyn ChildKiller + Send + Sync>;
@@ -132,9 +130,6 @@ pub(crate) struct PtyChild {
 impl SupervisedChild for PtyChild {
     fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
         self.child.try_wait()
-    }
-    fn wait(&mut self) -> io::Result<ExitStatus> {
-        self.child.wait()
     }
     fn clone_killer(&mut self) -> Box<dyn ChildKiller + Send + Sync> {
         self.child.clone_killer()
@@ -241,14 +236,25 @@ where
                 // still running and drop() is the last defense.
                 return Err(wrap_io("forwarder failed; kill escalation failed", e));
             }
-            let wait_outcome = child.wait();
-            // Only disarm when wait() actually consumed a status;
-            // a failed wait() means the child may still be alive,
-            // in which case drop() should retry the kill.
-            if wait_outcome.is_ok() {
-                guard.disarm();
-            } else if let Err(e) = &wait_outcome {
-                tracing::warn!(error = %e, "supervisor: wait() after kill failed");
+            // Bounded wait: a child catching/ignoring the kill
+            // signal must not be allowed to hang the supervisor.
+            // Only disarm when an exit status was actually
+            // observed; otherwise leave drop() to retry the kill.
+            match wait_with_budget(
+                &mut child,
+                deadlines.post_kill_wait_budget,
+                deadlines.wait_poll,
+            ) {
+                Ok(Some(_status)) => guard.disarm(),
+                Ok(None) => {
+                    tracing::warn!(
+                        budget = ?deadlines.post_kill_wait_budget,
+                        "supervisor: child did not exit within post-kill wait budget after forwarder error"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "supervisor: wait_with_budget() after kill failed");
+                }
             }
             // Pull the actual io::Error out for the Pty wrapper.
             let err = h2c_result
@@ -481,12 +487,6 @@ mod tests {
                 s.polls_remaining -= 1;
                 Ok(None)
             }
-        }
-        fn wait(&mut self) -> io::Result<ExitStatus> {
-            let mut s = self.state.lock().unwrap();
-            // Block-ish wait: just return the scheduled status.
-            s.polls_remaining = 0;
-            Ok(s.scheduled.clone())
         }
         fn clone_killer(&mut self) -> Box<dyn ChildKiller + Send + Sync> {
             Box::new(MockKiller {
