@@ -39,10 +39,24 @@
 //!
 //! `host_to_child` is the only forwarder that may stay blocked
 //! after the child exits — it can be sitting in `read()` on real
-//! host stdin with no graceful cancellation primitive. If the
-//! join exceeds [`Deadlines::forwarder_join_budget`] we emit a
-//! `tracing::warn!`, drop the join handle (detaching the OS
-//! thread), and let the parent process termination clean it up.
+//! host stdin with no graceful cancellation primitive. The
+//! supervisor uses two separate join budgets to handle the two
+//! directions:
+//!
+//! - [`Deadlines::forwarder_join_budget`] (5 s in production)
+//!   is the budget for the `ChildToHost` direction. If the
+//!   join exceeds that budget we emit `tracing::warn!`, drop
+//!   the join handle (detaching the OS thread), and let the
+//!   parent process termination clean it up.
+//! - [`Deadlines::host_to_child_post_exit_budget`] is **zero
+//!   in production**. The host->stdin reader has nothing
+//!   useful to deliver after the child is gone, so a
+//!   non-blocking `is_finished()` check decides between
+//!   extracting the real outcome and detaching silently
+//!   (`tracing::debug!`). Without the split, every clean
+//!   interactive exit would block for 5 s waiting on a
+//!   `read()` call that can't be cancelled.
+//!
 //! A first-class cancellation API for forwarders is tracked as a
 //! follow-up — see issue #89 (`pty: cancellable forwarders for
 //! non-EOF host stdin`).
@@ -67,16 +81,27 @@ use crate::{Error, Result};
 /// and the supervisor escalates `kill()`. A finite deadline is
 /// only meaningful in tests that need bounded run time.
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct Deadlines {
     /// Optional wall-clock deadline on Phase 1 (waiting for the
     /// child). `None` in production (poll forever). Tests pass
     /// a tight value (e.g. 50ms) for bounded runtime.
     pub child_wait_deadline: Option<Duration>,
-    /// Maximum time spent joining each forwarder thread after
-    /// the child has exited. On timeout the join handle is
-    /// dropped and a `warn!` is emitted (detached-thread mode).
+    /// Maximum time spent joining the `ChildToHost` forwarder
+    /// thread after the child has exited. On timeout the join
+    /// handle is dropped and a `warn!` is emitted (detached-
+    /// thread mode). Drains pending child output that the
+    /// forwarder may still be writing to host stdout.
     pub forwarder_join_budget: Duration,
+    /// Same as `forwarder_join_budget` but for the
+    /// `HostToChild` direction. Production sets this to **zero**
+    /// because once the child has exited there is nothing useful
+    /// the host->child forwarder can deliver: the user's
+    /// in-flight keystrokes are now meaningless input. Without
+    /// the split, an interactive session blocked in `stdin.read()`
+    /// would hold the supervisor for the full 5 s join budget on
+    /// every clean exit, making each `q9 vim` (etc.) appear to
+    /// hang for 5 s after the wrapped editor quit.
+    pub host_to_child_post_exit_budget: Duration,
     /// Sleep between successive `try_wait` ticks. Keeps the
     /// supervisor from busy-looping; small enough that signal
     /// death is observed promptly.
@@ -95,11 +120,14 @@ impl Deadlines {
     /// poll cadence. These match the rest of the PTY layer's
     /// per-file constants (see `pty/spawn.rs::real_spawn`,
     /// `pty/pump.rs::real_pump`).
-    #[allow(dead_code)] // wired into default_body in PR 5 / #26
     pub(crate) const fn production() -> Self {
         Self {
             child_wait_deadline: None,
             forwarder_join_budget: Duration::from_secs(5),
+            // Detach the host->stdin reader immediately on child
+            // exit; see field doc for why a non-zero value would
+            // hang every interactive session for 5 s.
+            host_to_child_post_exit_budget: Duration::ZERO,
             wait_poll: Duration::from_millis(20),
             post_kill_wait_budget: Duration::from_secs(5),
         }
@@ -122,7 +150,6 @@ pub(crate) trait SupervisedChild {
 }
 
 /// Production [`SupervisedChild`] over a `portable-pty` child.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct PtyChild {
     child: Box<dyn portable_pty::Child + Send + Sync>,
 }
@@ -139,18 +166,18 @@ impl SupervisedChild for PtyChild {
 /// RAII guard that best-effort `kill()`s the child unless
 /// disarmed. Documented invariant: armed until a successful
 /// wait returns and consumes a status. See module-level docs.
-struct KillOnDropGuard {
+pub(crate) struct KillOnDropGuard {
     killer: Option<Box<dyn ChildKiller + Send + Sync>>,
 }
 
 impl KillOnDropGuard {
-    fn armed(killer: Box<dyn ChildKiller + Send + Sync>) -> Self {
+    pub(crate) fn armed(killer: Box<dyn ChildKiller + Send + Sync>) -> Self {
         Self {
             killer: Some(killer),
         }
     }
 
-    fn disarm(&mut self) {
+    pub(crate) fn disarm(&mut self) {
         self.killer = None;
     }
 }
@@ -172,7 +199,6 @@ impl Drop for KillOnDropGuard {
 /// Production entry point. Wraps [`SpawnedSession`] +
 /// [`IoPump`] into the trait-seam form and delegates to
 /// [`run_pump_session_with`].
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<ExitCode> {
     // Bind the master to a named local so it stays alive for
     // the entire supervised session. A wildcard (`master: _`)
@@ -193,7 +219,6 @@ pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<
 /// implementation and the time [`Deadlines`]. Exists so unit
 /// tests can drive every branch of the state machine without a
 /// real PTY.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn run_pump_session_with<C>(
     mut child: C,
     pump: IoPump,
@@ -327,7 +352,10 @@ where
 
     // Phase 2: drain remaining forwarders within budget.
     if let Some(h) = h2c.take() {
-        h2c_result = Some(join_with_budget(h, deadlines.forwarder_join_budget));
+        h2c_result = Some(join_with_budget(
+            h,
+            deadlines.host_to_child_post_exit_budget,
+        ));
     }
     if let Some(h) = c2h.take() {
         c2h_result = Some(join_with_budget(h, deadlines.forwarder_join_budget));
@@ -399,8 +427,33 @@ fn extract_join(handle: ForwarderHandle) -> io::Result<ForwarderExit> {
 /// (detaching the underlying OS thread) and synthesize a
 /// `TimedOut` error so the caller can log it.
 fn join_with_budget(handle: ForwarderHandle, budget: Duration) -> io::Result<ForwarderExit> {
-    let deadline = Instant::now() + budget;
     let direction = handle.direction;
+    // Always try a non-blocking check first so a zero-budget call
+    // (production HostToChild) still extracts a finished
+    // forwarder's outcome instead of being treated as a timeout.
+    // Without this, `Deadlines::production().host_to_child_post_exit_budget
+    // = ZERO` would skip the loop entirely and emit a spurious
+    // "exceeded budget" warning on every clean exit.
+    if handle.join.is_finished() {
+        return extract_join(handle);
+    }
+    if budget.is_zero() {
+        // Intentional zero-budget detach (production HostToChild
+        // post-exit). The host->stdin reader has nothing useful
+        // to deliver after the child is gone, so we drop the
+        // handle silently rather than warning. Use `debug!` for
+        // observability without polluting normal-exit logs.
+        tracing::debug!(
+            ?direction,
+            "supervisor: zero-budget detach of unfinished forwarder"
+        );
+        drop(handle);
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "forwarder detached with zero budget",
+        ));
+    }
+    let deadline = Instant::now() + budget;
     // Poll-based wait so we never block past the deadline.
     while Instant::now() < deadline {
         if handle.join.is_finished() {
@@ -426,6 +479,11 @@ fn log_forwarder_outcome(direction: Direction, result: Option<io::Result<Forward
         Some(Ok(exit)) => {
             tracing::debug!(?direction, ?exit, "supervisor: forwarder exited cleanly")
         }
+        Some(Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
+            // join_with_budget has already logged the detach
+            // (warn for budget exceeded, debug for zero-budget).
+            // Avoid double-logging the same condition here.
+        }
         Some(Err(e)) => {
             tracing::warn!(?direction, error = %e, "supervisor: forwarder error after child exit")
         }
@@ -442,7 +500,7 @@ mod tests {
         Arc, Mutex,
     };
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     /// In-memory mock of a `portable_pty::Child` for unit tests.
     /// State machine: `try_wait` returns `None` `pending_polls`
@@ -526,6 +584,7 @@ mod tests {
         Deadlines {
             child_wait_deadline: Some(Duration::from_secs(2)),
             forwarder_join_budget: Duration::from_millis(500),
+            host_to_child_post_exit_budget: Duration::from_millis(500),
             wait_poll: Duration::from_millis(2),
             post_kill_wait_budget: Duration::from_millis(500),
         }
@@ -576,6 +635,104 @@ mod tests {
             host_to_child,
             child_to_host,
         }
+    }
+
+    /// Build a pump where `HostToChild` is hung in `read()`
+    /// forever but `ChildToHost` terminates instantly. Used by
+    /// the regression test that pins the production
+    /// `host_to_child_post_exit_budget = 0` invariant — the
+    /// supervisor must detach the hung stdin reader without
+    /// waiting the full `forwarder_join_budget`.
+    fn hung_h2c_quiet_c2h_pump() -> IoPump {
+        struct ForeverReader;
+        impl io::Read for ForeverReader {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                loop {
+                    std::thread::park_timeout(Duration::from_secs(60));
+                }
+            }
+        }
+        struct DiscardWriter;
+        impl io::Write for DiscardWriter {
+            fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let host_to_child = spawn_forwarder(Direction::HostToChild, ForeverReader, DiscardWriter);
+        let c2h_in: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let c2h_out: Vec<u8> = Vec::new();
+        let child_to_host = spawn_forwarder(Direction::ChildToHost, c2h_in, c2h_out);
+        IoPump {
+            host_to_child,
+            child_to_host,
+        }
+    }
+
+    /// Regression for chatgpt-codex/copilot reviewer finding
+    /// (PR #91): zero budget must NOT bypass the
+    /// `is_finished()` extraction — a HostToChild forwarder
+    /// that has already finished by the time the supervisor
+    /// reaches the join site must surface its real outcome
+    /// instead of being treated as a timed-out detach.
+    #[test]
+    fn zero_budget_extracts_finished_forwarder() {
+        // EOF input + no-op writer => forwarder finishes
+        // essentially immediately.
+        let reader: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let writer: Vec<u8> = Vec::new();
+        let handle = spawn_forwarder(Direction::HostToChild, reader, writer);
+        // Bounded spin instead of a fixed sleep: a contended CI
+        // runner can take longer than any constant we'd pick
+        // here, so poll `is_finished()` up to a generous
+        // deadline before exercising the zero-budget branch.
+        let wait_deadline = Instant::now() + Duration::from_secs(2);
+        while !handle.join.is_finished() && Instant::now() < wait_deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            handle.join.is_finished(),
+            "forwarder did not reach completion within the wait budget"
+        );
+        let result = join_with_budget(handle, Duration::ZERO);
+        assert!(
+            result.is_ok(),
+            "zero-budget join of finished forwarder must extract Ok, got {result:?}"
+        );
+    }
+
+    /// Regression for rubber-duck finding #1 (PR 5): with
+    /// production deadlines, an interactive `q9` session whose
+    /// `HostToChild` reader is blocked in `stdin.read()` must
+    /// not stall the supervisor for the full
+    /// `forwarder_join_budget` (5 s) on clean child exit. The
+    /// production split sets `host_to_child_post_exit_budget`
+    /// to zero so the hung handle is detached immediately.
+    #[test]
+    fn production_deadlines_detach_hung_host_to_child_immediately() {
+        // child_wait_deadline=None in production; switch to a
+        // bounded value here so the test cannot hang on a
+        // try_wait regression. Keep the per-direction budgets
+        // exactly as production() sets them.
+        let mut deadlines = Deadlines::production();
+        deadlines.child_wait_deadline = Some(Duration::from_secs(2));
+        deadlines.wait_poll = Duration::from_millis(2);
+
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 0);
+        let start = Instant::now();
+        let code = run_pump_session_with(child, hung_h2c_quiet_c2h_pump(), deadlines)
+            .expect("clean exit with hung h2c must still be Ok");
+        let elapsed = start.elapsed();
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        // Generous slack but well under the 5 s production
+        // forwarder_join_budget the bug would have triggered.
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "supervisor stalled on hung HostToChild: {elapsed:?}"
+        );
     }
 
     #[test]
@@ -636,6 +793,7 @@ mod tests {
         let deadlines = Deadlines {
             child_wait_deadline: Some(Duration::from_secs(2)),
             forwarder_join_budget: Duration::from_millis(50),
+            host_to_child_post_exit_budget: Duration::from_millis(50),
             wait_poll: Duration::from_millis(2),
             post_kill_wait_budget: Duration::from_millis(500),
         };
@@ -833,6 +991,7 @@ mod real_session {
         Deadlines {
             child_wait_deadline: Some(WAIT_BUDGET),
             forwarder_join_budget: JOIN_BUDGET,
+            host_to_child_post_exit_budget: JOIN_BUDGET,
             wait_poll: WAIT_POLL,
             post_kill_wait_budget: WAIT_BUDGET,
         }

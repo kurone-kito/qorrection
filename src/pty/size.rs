@@ -29,7 +29,6 @@ pub(crate) const FALLBACK_SIZE: PtySize = PtySize {
 
 /// Snapshot the host terminal's current size for a freshly
 /// spawned PTY child.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn initial_size() -> PtySize {
     initial_size_with(crossterm::terminal::size)
 }
