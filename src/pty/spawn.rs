@@ -48,7 +48,6 @@ use crate::{Error, Result};
 /// underlying process. PR 4 / #33 owns the explicit wait+kill
 /// ladder; until then, callers must arrange shutdown
 /// themselves (e.g. via [`portable_pty::Child::clone_killer`]).
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct SpawnedSession {
     pub child: Box<dyn portable_pty::Child + Send + Sync>,
     pub master: Box<dyn MasterPty + Send>,
@@ -60,7 +59,6 @@ pub(crate) struct SpawnedSession {
 /// [`preflight_command`] before invoking portable-pty;
 /// post-`fork` failures from portable-pty itself surface
 /// through [`map_spawn_error`].
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn spawn_child(
     command: &OsStr,
     args: &[std::ffi::OsString],

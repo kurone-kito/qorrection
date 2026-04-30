@@ -19,7 +19,6 @@ use crate::{Error, Result};
 /// Direction tags are preserved so PR 4's supervisor can
 /// attribute join failures (and decide drain ordering) without
 /// relying on field position.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct IoPump {
     pub(crate) host_to_child: ForwarderHandle,
     pub(crate) child_to_host: ForwarderHandle,
@@ -39,7 +38,6 @@ pub(crate) struct IoPump {
 /// Errors from portable-pty (handle acquisition, fd dup) flow
 /// through [`Error::Pty`], preserving the existing exit-code
 /// classification from `src/error.rs`.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn start_io_pump<HIn, HOut>(
     session: &mut SpawnedSession,
     host_stdin: HIn,

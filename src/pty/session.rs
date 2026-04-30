@@ -67,7 +67,6 @@ use crate::{Error, Result};
 /// and the supervisor escalates `kill()`. A finite deadline is
 /// only meaningful in tests that need bounded run time.
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct Deadlines {
     /// Optional wall-clock deadline on Phase 1 (waiting for the
     /// child). `None` in production (poll forever). Tests pass
@@ -95,7 +94,6 @@ impl Deadlines {
     /// poll cadence. These match the rest of the PTY layer's
     /// per-file constants (see `pty/spawn.rs::real_spawn`,
     /// `pty/pump.rs::real_pump`).
-    #[allow(dead_code)] // wired into default_body in PR 5 / #26
     pub(crate) const fn production() -> Self {
         Self {
             child_wait_deadline: None,
@@ -122,7 +120,6 @@ pub(crate) trait SupervisedChild {
 }
 
 /// Production [`SupervisedChild`] over a `portable-pty` child.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct PtyChild {
     child: Box<dyn portable_pty::Child + Send + Sync>,
 }
@@ -172,7 +169,6 @@ impl Drop for KillOnDropGuard {
 /// Production entry point. Wraps [`SpawnedSession`] +
 /// [`IoPump`] into the trait-seam form and delegates to
 /// [`run_pump_session_with`].
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<ExitCode> {
     // Bind the master to a named local so it stays alive for
     // the entire supervised session. A wildcard (`master: _`)
@@ -193,7 +189,6 @@ pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<
 /// implementation and the time [`Deadlines`]. Exists so unit
 /// tests can drive every branch of the state machine without a
 /// real PTY.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn run_pump_session_with<C>(
     mut child: C,
     pump: IoPump,

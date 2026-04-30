@@ -130,23 +130,25 @@ fn non_tty_passthrough(command: &OsString, args: &[OsString]) -> Result<ExitCode
     exit::map_exit_status(portable_pty::ExitStatus::from(status))
 }
 
-/// Placeholder body for PR 1. PR 5 (#26) replaces this with the
-/// real PTY pump and removes the diagnostic.
+/// Production wrap body. Spawns the child on a fresh PTY,
+/// wires the host↔child I/O pump, and supervises the session
+/// to a child exit + bounded forwarder drain.
 ///
-/// Uses `\r\n` rather than `\n` because, on a real interactive
-/// TTY, the surrounding [`run_session_with`] is now holding the
-/// terminal in raw mode where output post-processing (newline
-/// translation) is disabled. A bare `\n` would leave the cursor
-/// dangling at the end of the line.
-///
-/// Intentionally emits no `argv[0]`-derived program-name prefix:
-/// other diagnostics route through [`crate::program_name`], but
-/// this body has no access to `argv[0]` and is throwaway code.
-/// PR 5 removes the line entirely, so plumbing the program name
-/// through the session seam just to delete it would be churn.
-fn default_body(_command: &OsString, _args: &[OsString]) -> Result<ExitCode> {
-    eprint!("PTY wrap pending\r\n");
-    Ok(ExitCode::from(2))
+/// `\r\n` line endings are unnecessary here because the
+/// supervisor surfaces the child's exit status through the
+/// returned [`ExitCode`]; nothing in this body writes to host
+/// stdout directly.
+fn default_body(command: &OsString, args: &[OsString]) -> Result<ExitCode> {
+    let size = size::initial_size();
+    tracing::info!(
+        program = %command.to_string_lossy(),
+        cols = size.cols,
+        rows = size.rows,
+        "wrap session: spawning child on PTY"
+    );
+    let mut session = spawn::spawn_child(command, args, size)?;
+    let pump = pump::start_io_pump(&mut session, std::io::stdin(), std::io::stdout())?;
+    session::run_pump_session(session, pump)
 }
 
 #[cfg(test)]

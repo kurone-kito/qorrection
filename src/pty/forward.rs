@@ -20,7 +20,6 @@ const BUF_LEN: usize = 8 * 1024;
 
 /// Direction tag carried in [`ForwarderHandle`] so PR 4's
 /// supervisor can attribute join failures to the right pipe.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Direction {
     HostToChild,
@@ -33,7 +32,6 @@ pub(crate) enum Direction {
 /// PR 4 may want to short-circuit drain on [`Self::WriterClosed`]
 /// (the receiving side hung up — e.g. host stdout pager exit,
 /// or child closing its stdin after EOF).
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ForwarderExit {
     /// Reader returned `Ok(0)` — natural EOF on the source.
@@ -48,7 +46,6 @@ pub(crate) enum ForwarderExit {
 /// The thread keeps running until [`ForwarderExit`] is
 /// produced or an unrecoverable [`io::Error`] is returned.
 /// PR 4 owns the join policy.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) struct ForwarderHandle {
     pub(crate) direction: Direction,
     pub(crate) join: JoinHandle<io::Result<ForwarderExit>>,
@@ -59,7 +56,6 @@ pub(crate) struct ForwarderHandle {
 ///
 /// See [`ForwarderExit`] for graceful termination tagging and
 /// the module-level docs for the I/O policy summary.
-#[allow(dead_code)] // wired into default_body in PR 5 / #26
 pub(crate) fn spawn_forwarder<R, W>(
     direction: Direction,
     mut reader: R,
