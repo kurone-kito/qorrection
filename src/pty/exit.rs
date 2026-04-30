@@ -91,12 +91,17 @@ fn classify_signal_name(name: &str) -> i32 {
 ///
 /// Returns `None` on non-Unix targets (where `signal()` is
 /// always `None` anyway, so this branch is unreachable in
-/// practice) or when no signum in `1..=64` produces a matching
-/// name.
+/// practice) or when no signum in the platform's signal range
+/// produces a matching name. The upper bound is `SIGRTMAX()`
+/// on platforms that expose it (Linux, Solaris, Hurd) so RT
+/// signals are covered, and a generous static fallback (96)
+/// elsewhere — comfortably above every Unix signal table I've
+/// seen (AIX = 57; macOS / *BSD = 32).
 #[cfg(unix)]
 fn lookup_via_strsignal(name: &str) -> Option<i32> {
     use std::ffi::CStr;
-    for n in 1..=64i32 {
+    let upper = max_signum_probe();
+    for n in 1..=upper {
         // SAFETY: `libc::strsignal` returns a pointer into a
         // statically-allocated, NUL-terminated, immutable string
         // owned by libc. We borrow it for the duration of the
@@ -118,6 +123,33 @@ fn lookup_via_strsignal(name: &str) -> Option<i32> {
     None
 }
 
+#[cfg(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "hurd",
+))]
+fn max_signum_probe() -> i32 {
+    // SIGRTMAX is exposed as a safe `extern fn` (no parameters,
+    // no preconditions) on Linux/Solaris/Hurd in `libc`.
+    libc::SIGRTMAX()
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "solaris",
+    target_os = "illumos",
+    target_os = "hurd",
+)))]
+fn max_signum_probe() -> i32 {
+    // Generous static fallback for targets without SIGRTMAX().
+    // Comfortably above every Unix signal table observed in
+    // practice (AIX = 57; macOS / *BSD = 32).
+    96
+}
+
 #[cfg(not(unix))]
 fn lookup_via_strsignal(_name: &str) -> Option<i32> {
     None
@@ -127,49 +159,81 @@ fn lookup_via_strsignal(_name: &str) -> Option<i32> {
 /// where the cached name was produced under a different locale
 /// than the current one.
 ///
-/// The mapping uses Linux `signal(7)` numbering. `SIGSTKFLT`,
-/// `SIGCLD`, `SIGPOLL`, `SIGUNUSED`, etc. are intentionally
-/// omitted — they are aliases or non-POSIX, and a downstream
-/// caller that cares can extend this table.
+/// Uses `libc::SIG*` constants rather than hardcoded Linux
+/// signal numbers, so the mapping is correct on macOS and other
+/// BSD-family targets where signal numbering diverges (e.g.
+/// SIGSYS = 12 on macOS, 31 on Linux). Signals that don't exist
+/// on every Unix target are `cfg`-gated. `SIGSTKFLT`, `SIGCLD`,
+/// `SIGPOLL`, `SIGUNUSED`, etc. are intentionally omitted —
+/// they are aliases or non-POSIX, and a downstream caller that
+/// cares can extend this table.
+#[cfg(unix)]
 fn lookup_english_posix(name: &str) -> Option<i32> {
     // strsignal often prints "Hangup", "Interrupt", "Terminated"
     // — full English words rather than the SIG* tokens — so we
     // accept both spellings and a couple of common variants.
     let lowered = name.to_ascii_lowercase();
-    let n = match lowered.as_str() {
-        "hangup" | "sighup" => 1,
-        "interrupt" | "sigint" => 2,
-        "quit" | "sigquit" => 3,
-        "illegal instruction" | "sigill" => 4,
-        "trace/breakpoint trap" | "trace trap" | "sigtrap" => 5,
-        "aborted" | "abort" | "sigabrt" => 6,
-        "bus error" | "sigbus" => 7,
-        "floating point exception" | "floating-point exception" | "sigfpe" => 8,
-        "killed" | "sigkill" => 9,
-        "user defined signal 1" | "sigusr1" => 10,
-        "segmentation fault" | "sigsegv" => 11,
-        "user defined signal 2" | "sigusr2" => 12,
-        "broken pipe" | "sigpipe" => 13,
-        "alarm clock" | "sigalrm" => 14,
-        "terminated" | "sigterm" => 15,
-        "child exited" | "sigchld" => 17,
-        "continued" | "sigcont" => 18,
-        "stopped (signal)" | "sigstop" => 19,
-        "stopped" | "sigtstp" => 20,
-        "stopped (tty input)" | "sigttin" => 21,
-        "stopped (tty output)" | "sigttou" => 22,
-        "urgent i/o condition" | "sigurg" => 23,
-        "cpu time limit exceeded" | "sigxcpu" => 24,
-        "file size limit exceeded" | "sigxfsz" => 25,
-        "virtual timer expired" | "sigvtalrm" => 26,
-        "profiling timer expired" | "sigprof" => 27,
-        "window changed" | "sigwinch" => 28,
-        "i/o possible" | "sigio" => 29,
-        "power failure" | "sigpwr" => 30,
-        "bad system call" | "sigsys" => 31,
-        _ => return None,
-    };
-    Some(n)
+    let candidates: &[(&[&str], i32)] = &[
+        (&["hangup", "sighup"], libc::SIGHUP),
+        (&["interrupt", "sigint"], libc::SIGINT),
+        (&["quit", "sigquit"], libc::SIGQUIT),
+        (&["illegal instruction", "sigill"], libc::SIGILL),
+        (
+            &["trace/breakpoint trap", "trace trap", "sigtrap"],
+            libc::SIGTRAP,
+        ),
+        (&["aborted", "abort", "sigabrt"], libc::SIGABRT),
+        (&["bus error", "sigbus"], libc::SIGBUS),
+        (
+            &[
+                "floating point exception",
+                "floating-point exception",
+                "sigfpe",
+            ],
+            libc::SIGFPE,
+        ),
+        (&["killed", "sigkill"], libc::SIGKILL),
+        (&["user defined signal 1", "sigusr1"], libc::SIGUSR1),
+        (&["segmentation fault", "sigsegv"], libc::SIGSEGV),
+        (&["user defined signal 2", "sigusr2"], libc::SIGUSR2),
+        (&["broken pipe", "sigpipe"], libc::SIGPIPE),
+        (&["alarm clock", "sigalrm"], libc::SIGALRM),
+        (&["terminated", "sigterm"], libc::SIGTERM),
+        (&["child exited", "sigchld"], libc::SIGCHLD),
+        (&["continued", "sigcont"], libc::SIGCONT),
+        (&["stopped (signal)", "sigstop"], libc::SIGSTOP),
+        (&["stopped", "sigtstp"], libc::SIGTSTP),
+        (&["stopped (tty input)", "sigttin"], libc::SIGTTIN),
+        (&["stopped (tty output)", "sigttou"], libc::SIGTTOU),
+        (&["urgent i/o condition", "sigurg"], libc::SIGURG),
+        (&["cpu time limit exceeded", "sigxcpu"], libc::SIGXCPU),
+        (&["file size limit exceeded", "sigxfsz"], libc::SIGXFSZ),
+        (&["virtual timer expired", "sigvtalrm"], libc::SIGVTALRM),
+        (&["profiling timer expired", "sigprof"], libc::SIGPROF),
+        (&["window changed", "sigwinch"], libc::SIGWINCH),
+        (&["i/o possible", "sigio"], libc::SIGIO),
+        (&["bad system call", "sigsys"], libc::SIGSYS),
+    ];
+    for (names, sig) in candidates {
+        if names.contains(&lowered.as_str()) {
+            return Some(*sig);
+        }
+    }
+    // SIGPWR is Linux/Android-specific; gate separately rather
+    // than `cfg`-attribute the table entry, which the
+    // const-context restrictions of slice literals don't allow.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        if matches!(lowered.as_str(), "power failure" | "sigpwr") {
+            return Some(libc::SIGPWR);
+        }
+    }
+    None
+}
+
+#[cfg(not(unix))]
+fn lookup_english_posix(_name: &str) -> Option<i32> {
+    None
 }
 
 /// Layer 3 — parse `"Signal N"` (the literal fallback
