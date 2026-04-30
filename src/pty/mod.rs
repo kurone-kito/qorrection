@@ -12,7 +12,8 @@
 //!
 //! The wrap-path invariant `RawGuard` must enforce — "raw mode
 //! is acquired before any session work and restored on every
-//! exit path, including panics" — cannot be unit-tested through
+//! returning or unwinding exit path (normal return, `?`,
+//! panic-with-unwind)" — cannot be unit-tested through
 //! the production [`run_session`] entry because it touches the
 //! real terminal and the real `crossterm` enable / disable
 //! syscalls. [`run_session_with`] separates the policy
