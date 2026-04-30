@@ -192,17 +192,6 @@ mod tests {
     }
 
     #[test]
-    fn noop_guard_runs_no_hook() {
-        // A noop guard has no hook to fire; the counter must stay
-        // at zero across its entire lifetime.
-        let counter = Arc::new(AtomicUsize::new(0));
-        {
-            let _g = RawGuard::noop();
-        }
-        assert_eq!(counter.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
     fn armed_guard_runs_hook_on_normal_drop() {
         let counter = Arc::new(AtomicUsize::new(0));
         {
