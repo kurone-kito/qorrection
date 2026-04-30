@@ -500,7 +500,7 @@ mod tests {
         Arc, Mutex,
     };
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     /// In-memory mock of a `portable_pty::Child` for unit tests.
     /// State machine: `try_wait` returns `None` `pending_polls`
@@ -684,10 +684,18 @@ mod tests {
         let reader: Cursor<Vec<u8>> = Cursor::new(Vec::new());
         let writer: Vec<u8> = Vec::new();
         let handle = spawn_forwarder(Direction::HostToChild, reader, writer);
-        // Give the forwarder a moment to reach completion so
-        // `is_finished()` returns true at the call site. 50 ms
-        // is generous on every supported runner.
-        std::thread::sleep(Duration::from_millis(50));
+        // Bounded spin instead of a fixed sleep: a contended CI
+        // runner can take longer than any constant we'd pick
+        // here, so poll `is_finished()` up to a generous
+        // deadline before exercising the zero-budget branch.
+        let wait_deadline = Instant::now() + Duration::from_secs(2);
+        while !handle.join.is_finished() && Instant::now() < wait_deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            handle.join.is_finished(),
+            "forwarder did not reach completion within the wait budget"
+        );
         let result = join_with_budget(handle, Duration::ZERO);
         assert!(
             result.is_ok(),
