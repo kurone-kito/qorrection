@@ -56,7 +56,6 @@ use crate::{Error, Result};
 /// POSIX `WEXITSTATUS` macro (which discards the upper bits of
 /// the wait-status word). Values above 255 are exotic and
 /// usually a bug in the child anyway.
-#[allow(dead_code)] // wired into the supervisor in the next commit (#33)
 pub(crate) fn map_exit_status(status: ExitStatus) -> Result<ExitCode> {
     if let Some(name) = status.signal() {
         let signum = classify_signal_name(name);
