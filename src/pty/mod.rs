@@ -27,8 +27,8 @@
 //! ordering / lifetime invariants without touching termios.
 //!
 //! The `command` and `args` parameters are accepted but unused
-//! by [`default_body`]; PR 2 (#22) wires them into the spawn
-//! call.
+//! by [`default_body`]; PR 5 (#26) wires them into the spawn
+//! call using the PR 2 spawn primitives.
 
 mod size;
 mod spawn;
