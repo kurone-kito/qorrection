@@ -60,3 +60,150 @@ where
         child_to_host,
     })
 }
+
+// Unix-only real-spawn integration smoke. Exercises
+// `start_io_pump` against a real `/bin/echo` child: empty
+// host stdin drains the host->child forwarder via ReaderEof,
+// while the child->host forwarder captures "hi" into a
+// shared sink and converges on the master reader's EOF when
+// `echo` exits.
+//
+// Mirrors the bounded-deadline pattern from
+// `tests/pty_smoke.rs` and `src/pty/spawn.rs::real_spawn`
+// (constants duplicated locally per repo convention --
+// rubber-duck-filtered finding #6 from PR 2).
+#[cfg(all(test, unix))]
+mod real_pump {
+    use super::*;
+    use crate::pty::spawn::spawn_child;
+    use portable_pty::PtySize;
+    use std::ffi::{OsStr, OsString};
+    use std::io::{self, Cursor};
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use crate::pty::forward::ForwarderExit;
+
+    const JOIN_BUDGET: Duration = Duration::from_secs(5);
+    const WAIT_BUDGET: Duration = Duration::from_secs(5);
+    const WAIT_POLL: Duration = Duration::from_millis(20);
+
+    fn pty_size_80x24() -> PtySize {
+        PtySize {
+            cols: 80,
+            rows: 24,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
+    }
+
+    /// Shared `Write` sink so the integration test can inspect
+    /// what the `child_to_host` forwarder produced after the
+    /// thread joins.
+    #[derive(Clone, Default)]
+    struct SharedSink {
+        inner: Arc<Mutex<Vec<u8>>>,
+    }
+    impl SharedSink {
+        fn snapshot(&self) -> Vec<u8> {
+            self.inner.lock().unwrap().clone()
+        }
+    }
+    impl io::Write for SharedSink {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.inner.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn join_within<T: Send + 'static>(
+        handle: std::thread::JoinHandle<T>,
+        budget: Duration,
+        label: &str,
+    ) -> T {
+        let deadline = Instant::now() + budget;
+        loop {
+            if handle.is_finished() {
+                return handle.join().unwrap_or_else(|_| panic!("{label} panicked"));
+            }
+            if Instant::now() >= deadline {
+                panic!("{label} did not finish within {budget:?}");
+            }
+            thread::sleep(WAIT_POLL);
+        }
+    }
+
+    #[test]
+    fn pump_round_trips_echo_output_with_empty_stdin() {
+        let mut session = spawn_child(
+            OsStr::new("/bin/echo"),
+            &[OsString::from("hi")],
+            pty_size_80x24(),
+        )
+        .expect("spawn /bin/echo");
+
+        let mut killer = session.child.clone_killer();
+        let sink = SharedSink::default();
+        let host_stdin = Cursor::new(Vec::<u8>::new()); // immediate EOF
+
+        let pump = start_io_pump(&mut session, host_stdin, sink.clone()).expect("start_io_pump");
+
+        // Bounded child wait: if echo regresses, kill it so
+        // the master reader unblocks and the child_to_host
+        // forwarder can return.
+        let wait_deadline = Instant::now() + WAIT_BUDGET;
+        let status = loop {
+            match session.child.try_wait() {
+                Ok(Some(s)) => break s,
+                Ok(None) => {
+                    if Instant::now() >= wait_deadline {
+                        let _ = killer.kill();
+                        panic!("child did not exit within {WAIT_BUDGET:?}");
+                    }
+                    thread::sleep(WAIT_POLL);
+                }
+                Err(e) => {
+                    let _ = killer.kill();
+                    panic!("child wait failed: {e}");
+                }
+            }
+        };
+        // Drop the master so any lingering reader sees EOF.
+        // `start_io_pump` consumed the writer; the cloned
+        // reader inside `child_to_host` releases when the
+        // master half is dropped.
+        drop(session);
+
+        let host_to_child_exit = join_within(pump.host_to_child.join, JOIN_BUDGET, "host_to_child");
+        let child_to_host_exit = join_within(pump.child_to_host.join, JOIN_BUDGET, "child_to_host");
+
+        assert!(status.success(), "child exited non-zero: {status:?}");
+
+        // Empty cursor -> immediate ReaderEof with zero bytes.
+        let h2c = host_to_child_exit.expect("host_to_child returned io::Error");
+        assert_eq!(h2c, ForwarderExit::ReaderEof { bytes: 0 });
+
+        // child_to_host can converge as either ReaderEof
+        // (clean cat exit -> master EOF) or WriterClosed
+        // (sink dropped its handle first); either is correct
+        // for a passive PR-3 forwarder.
+        let c2h = child_to_host_exit.expect("child_to_host returned io::Error");
+        assert!(
+            matches!(
+                c2h,
+                ForwarderExit::ReaderEof { .. } | ForwarderExit::WriterClosed { .. }
+            ),
+            "unexpected child_to_host exit: {c2h:?}"
+        );
+
+        let captured = String::from_utf8_lossy(&sink.snapshot()).into_owned();
+        assert!(
+            captured.contains("hi"),
+            "expected 'hi' in captured output, got: {captured:?}"
+        );
+    }
+}
