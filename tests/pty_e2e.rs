@@ -38,7 +38,9 @@ mod unix {
         let mut command = q9();
         command.args(["sh", "-c", "exit 7"]);
 
-        let session = spawn_command(command, Some(TIMEOUT_MS))?;
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        let _remaining = session.exp_eof()?;
+
         match session.process.wait()? {
             WaitStatus::Exited(_, 7) => Ok(()),
             other => panic!("expected q9 sh -c 'exit 7' to exit 7, got {other:?}"),
