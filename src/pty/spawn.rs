@@ -31,7 +31,73 @@ use std::ffi::OsStr;
 use std::io;
 use std::path::Path;
 
+use portable_pty::{native_pty_system, CommandBuilder, PtyPair, PtySize};
+
 use crate::{Error, Result};
+
+/// Owning bundle of a live PTY spawn.
+///
+/// Field declaration order = drop order. `child` ships first
+/// so its handle is dropped before the master/slave fds are
+/// released, which keeps PTY teardown semantics predictable
+/// (the master sees EOF after the child handle is gone).
+///
+/// **Drop is NOT a complete shutdown protocol** -- Rust's drop
+/// for `Box<dyn Child>` neither waits for nor kills the
+/// underlying process. PR 4 / #33 owns the explicit wait+kill
+/// ladder; until then, callers must arrange shutdown
+/// themselves (e.g. via [`portable_pty::Child::clone_killer`]).
+#[allow(dead_code)] // wired into default_body in PR 5 / #26
+pub(crate) struct SpawnedSession {
+    pub child: Box<dyn portable_pty::Child + Send + Sync>,
+    pub pair: PtyPair,
+}
+
+/// Spawn `command` + `args` on a fresh PTY pair sized `size`.
+///
+/// Honors the `Error::Spawn` -> 127 / 126 contract via
+/// [`preflight_command`] before invoking portable-pty;
+/// post-`fork` failures from portable-pty itself surface
+/// through [`map_spawn_error`].
+#[allow(dead_code)] // wired into default_body in PR 5 / #26
+pub(crate) fn spawn_child(
+    command: &OsStr,
+    args: &[std::ffi::OsString],
+    size: PtySize,
+) -> Result<SpawnedSession> {
+    preflight_command(command)?;
+
+    let system = native_pty_system();
+    let pair = system.openpty(size).map_err(Error::Pty)?;
+
+    let mut builder = CommandBuilder::new(command);
+    for arg in args {
+        builder.arg(arg);
+    }
+    // Best-effort: anchor the child to the parent's CWD if the
+    // call succeeds. Mirrors `tests/pty_smoke.rs`: silently
+    // inherit when `current_dir()` fails (e.g. CWD deleted).
+    if let Ok(cwd) = std::env::current_dir() {
+        builder.cwd(cwd);
+    }
+
+    let child = pair.slave.spawn_command(builder).map_err(map_spawn_error)?;
+    Ok(SpawnedSession { child, pair })
+}
+
+/// Defensive secondary classifier for failures that slip past
+/// [`preflight_command`] (e.g. portable-pty's internal
+/// `setsid`/`TIOCSCTTY`/fd-dup failures, or future portable-pty
+/// versions that *do* preserve an `io::Error` in the cause
+/// chain). The preflight is the primary contract for #34; this
+/// keeps the Spawn / Pty distinction working for everything
+/// else.
+fn map_spawn_error(err: anyhow::Error) -> Error {
+    match err.downcast::<io::Error>() {
+        Ok(io) => Error::Spawn(io),
+        Err(other) => Error::Pty(other),
+    }
+}
 
 /// Classify `command` as plausibly spawnable before calling
 /// `portable-pty`. Surfaces missing / non-executable paths as
@@ -43,7 +109,6 @@ use crate::{Error, Result};
 /// failure modes that only the OS can detect -- e.g. setuid
 /// mismatches that `access(X_OK)` accepts but `execve` rejects
 /// -- still surface from portable-pty via [`map_spawn_error`].
-#[allow(dead_code)] // wired into spawn_child below in the next commit
 pub(crate) fn preflight_command(command: &OsStr) -> Result<()> {
     let p = Path::new(command);
     // A path containing a separator (or an absolute prefix) is
@@ -180,6 +245,150 @@ mod tests {
                 );
             }
             other => panic!("expected Error::Spawn(NotFound), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_spawn_error_classifies_io_as_spawn_variant() {
+        let io_err = io::Error::from(io::ErrorKind::NotFound);
+        let err = map_spawn_error(anyhow::Error::from(io_err));
+        match err {
+            Error::Spawn(io) => assert_eq!(io.kind(), io::ErrorKind::NotFound),
+            other => panic!("expected Error::Spawn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn map_spawn_error_classifies_non_io_as_pty_variant() {
+        let err = map_spawn_error(anyhow::anyhow!("synthetic non-io failure"));
+        assert!(
+            matches!(err, Error::Pty(_)),
+            "expected Error::Pty, got {err:?}"
+        );
+    }
+
+    // ---- Unix-only end-to-end real-spawn tests --------------
+    //
+    // These mirror the bounded-deadline pattern in
+    // `tests/pty_smoke.rs` deliberately verbatim (constants
+    // duplicated locally) instead of refactoring a shared
+    // helper, to avoid a diff conflict with PR 3 which owns the
+    // forwarder helpers. Rubber-duck-filtered finding #6.
+    #[cfg(unix)]
+    mod real_spawn {
+        use super::super::*;
+        use portable_pty::PtySize;
+        use std::io::Read;
+        use std::sync::mpsc;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        const READ_BUDGET: Duration = Duration::from_secs(5);
+        const WAIT_BUDGET: Duration = Duration::from_secs(5);
+        const WAIT_POLL: Duration = Duration::from_millis(20);
+
+        fn pty_size_80x24() -> PtySize {
+            PtySize {
+                cols: 80,
+                rows: 24,
+                pixel_width: 0,
+                pixel_height: 0,
+            }
+        }
+
+        #[test]
+        fn spawn_child_runs_real_echo() {
+            let mut session = spawn_child(
+                OsStr::new("/bin/echo"),
+                &[std::ffi::OsString::from("hi")],
+                pty_size_80x24(),
+            )
+            .expect("spawn /bin/echo");
+
+            let mut killer = session.child.clone_killer();
+
+            // Drop slave so the master observes EOF when child exits.
+            drop(session.pair.slave);
+
+            let mut reader = session
+                .pair
+                .master
+                .try_clone_reader()
+                .expect("clone reader");
+            let mut master = Some(session.pair.master);
+
+            let (tx, rx) = mpsc::channel::<std::io::Result<Vec<u8>>>();
+            let reader_thread = thread::spawn(move || {
+                let mut captured = Vec::new();
+                let mut buf = [0u8; 256];
+                loop {
+                    match reader.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => captured.extend_from_slice(&buf[..n]),
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(e) => {
+                            let _ = tx.send(Err(e));
+                            return;
+                        }
+                    }
+                }
+                let _ = tx.send(Ok(captured));
+            });
+
+            let wait_deadline = Instant::now() + WAIT_BUDGET;
+            let status = loop {
+                match session.child.try_wait() {
+                    Ok(Some(s)) => break s,
+                    Ok(None) => {
+                        if Instant::now() >= wait_deadline {
+                            let _ = killer.kill();
+                            drop(master.take());
+                            panic!("child did not exit within {WAIT_BUDGET:?}");
+                        }
+                        thread::sleep(WAIT_POLL);
+                    }
+                    Err(e) => {
+                        let _ = killer.kill();
+                        drop(master.take());
+                        panic!("child wait failed: {e}");
+                    }
+                }
+            };
+            drop(master.take());
+
+            let captured = match rx.recv_timeout(READ_BUDGET) {
+                Ok(Ok(bytes)) => bytes,
+                Ok(Err(e)) => {
+                    let _ = killer.kill();
+                    panic!("pty read failed: {e}");
+                }
+                Err(_) => {
+                    let _ = killer.kill();
+                    panic!("pty read did not finish within {READ_BUDGET:?}");
+                }
+            };
+            reader_thread.join().expect("reader thread panicked");
+
+            assert!(status.success(), "child exited non-zero: {status:?}");
+            let captured_str = String::from_utf8_lossy(&captured);
+            assert!(
+                captured_str.contains("hi"),
+                "expected 'hi' in pty output, got: {captured_str:?}"
+            );
+        }
+
+        #[test]
+        fn spawn_child_returns_spawn_not_found_for_missing_command() {
+            let result = spawn_child(
+                OsStr::new("/definitely-not-there/qorrection-no-such-cmd-xyz"),
+                &[],
+                pty_size_80x24(),
+            );
+            match result {
+                Err(Error::Spawn(io)) => assert_eq!(io.kind(), io::ErrorKind::NotFound),
+                Err(other) => panic!("expected Error::Spawn(NotFound), got {other:?}"),
+                Ok(_) => panic!("expected spawn to fail for missing command"),
+            }
         }
     }
 }

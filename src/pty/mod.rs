@@ -4,9 +4,13 @@
 //! Wrap path needs to do: acquire raw mode, spawn the wrapped
 //! child on a pseudo-terminal, forward I/O, and propagate the
 //! child's exit status. PR 1 only seats the [`RawGuard`]
-//! acquisition; subsequent phase-2 PRs fill in spawn (#22),
-//! forwarders (#23 / #35 / #36), wait + exit code (#24 / #33),
-//! and replace [`default_body`] with the real pump (#26).
+//! acquisition; PR 2 lands the spawn building blocks under
+//! the [`size`] and [`spawn`] modules ([`size::initial_size`],
+//! [`spawn::spawn_child`], [`spawn::SpawnedSession`]) so PR 5
+//! (#26) can wire them into [`default_body`]. Subsequent
+//! phase-2 PRs fill in forwarders (#23 / #35 / #36), wait +
+//! exit code (#24 / #33), and replace [`default_body`] with
+//! the real pump (#26).
 //!
 //! ## Design — the `run_session_with` injection seam
 //!
