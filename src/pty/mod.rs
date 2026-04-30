@@ -33,6 +33,7 @@
 mod exit;
 mod forward;
 mod pump;
+mod session;
 mod size;
 mod spawn;
 
