@@ -442,8 +442,7 @@ mod tests {
     /// top-level mapping (`NotFound → 127`) applies.
     #[test]
     fn non_tty_passthrough_missing_command_is_spawn_error() {
-        let result =
-            non_tty_passthrough(&OsString::from("definitely-not-a-real-command-xyzzy"), &[]);
+        let result = non_tty_passthrough(&OsString::from("definitely-not-a-real-command-zz9"), &[]);
         assert!(matches!(result, Err(crate::Error::Spawn(_))));
     }
 }
