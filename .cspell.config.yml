@@ -57,6 +57,11 @@ words:
   - qorrection
   - qwen
   - rexpect
+  - sigcld
+  - sigpoll
+  - sigpwr
+  - sigstkflt
+  - sigunused
   - swatinem
   - toctou
   - xclaude
