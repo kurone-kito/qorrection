@@ -413,8 +413,33 @@ fn extract_join(handle: ForwarderHandle) -> io::Result<ForwarderExit> {
 /// (detaching the underlying OS thread) and synthesize a
 /// `TimedOut` error so the caller can log it.
 fn join_with_budget(handle: ForwarderHandle, budget: Duration) -> io::Result<ForwarderExit> {
-    let deadline = Instant::now() + budget;
     let direction = handle.direction;
+    // Always try a non-blocking check first so a zero-budget call
+    // (production HostToChild) still extracts a finished
+    // forwarder's outcome instead of being treated as a timeout.
+    // Without this, `Deadlines::production().host_to_child_post_exit_budget
+    // = ZERO` would skip the loop entirely and emit a spurious
+    // "exceeded budget" warning on every clean exit.
+    if handle.join.is_finished() {
+        return extract_join(handle);
+    }
+    if budget.is_zero() {
+        // Intentional zero-budget detach (production HostToChild
+        // post-exit). The host->stdin reader has nothing useful
+        // to deliver after the child is gone, so we drop the
+        // handle silently rather than warning. Use `debug!` for
+        // observability without polluting normal-exit logs.
+        tracing::debug!(
+            ?direction,
+            "supervisor: zero-budget detach of unfinished forwarder"
+        );
+        drop(handle);
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "forwarder detached with zero budget",
+        ));
+    }
+    let deadline = Instant::now() + budget;
     // Poll-based wait so we never block past the deadline.
     while Instant::now() < deadline {
         if handle.join.is_finished() {
@@ -439,6 +464,11 @@ fn log_forwarder_outcome(direction: Direction, result: Option<io::Result<Forward
         None => {}
         Some(Ok(exit)) => {
             tracing::debug!(?direction, ?exit, "supervisor: forwarder exited cleanly")
+        }
+        Some(Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
+            // join_with_budget has already logged the detach
+            // (warn for budget exceeded, debug for zero-budget).
+            // Avoid double-logging the same condition here.
         }
         Some(Err(e)) => {
             tracing::warn!(?direction, error = %e, "supervisor: forwarder error after child exit")
@@ -625,6 +655,30 @@ mod tests {
             host_to_child,
             child_to_host,
         }
+    }
+
+    /// Regression for chatgpt-codex/copilot reviewer finding
+    /// (PR #91): zero budget must NOT bypass the
+    /// `is_finished()` extraction — a HostToChild forwarder
+    /// that has already finished by the time the supervisor
+    /// reaches the join site must surface its real outcome
+    /// instead of being treated as a timed-out detach.
+    #[test]
+    fn zero_budget_extracts_finished_forwarder() {
+        // EOF input + no-op writer => forwarder finishes
+        // essentially immediately.
+        let reader: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let writer: Vec<u8> = Vec::new();
+        let handle = spawn_forwarder(Direction::HostToChild, reader, writer);
+        // Give the forwarder a moment to reach completion so
+        // `is_finished()` returns true at the call site. 50 ms
+        // is generous on every supported runner.
+        std::thread::sleep(Duration::from_millis(50));
+        let result = join_with_budget(handle, Duration::ZERO);
+        assert!(
+            result.is_ok(),
+            "zero-budget join of finished forwarder must extract Ok, got {result:?}"
+        );
     }
 
     /// Regression for rubber-duck finding #1 (PR 5): with
