@@ -87,7 +87,16 @@ pub(crate) fn spawn_child(
         // contributes the human-readable context message via
         // its `Display` impl and exposes the original via
         // `source()` -- preserving both layers.
-        Error::Spawn(io::Error::new(e.kind(), CurrentDirLookupError(e)))
+        //
+        // Force the wrapper kind to `Other` (NOT `e.kind()`):
+        // `Error::exit_code` maps `Spawn(NotFound)` to 127
+        // ("command not found"), which would misclassify a
+        // deleted-CWD failure as a missing executable. `Other`
+        // routes through the catch-all `Spawn(_) -> 126`
+        // ("found, not executable") branch instead -- still a
+        // non-zero exit, still surfaces the failure, but does
+        // not lie about which artifact went missing.
+        Error::Spawn(io::Error::other(CurrentDirLookupError(e)))
     })?;
 
     let system = native_pty_system();
@@ -592,9 +601,13 @@ mod tests {
     #[test]
     fn current_dir_lookup_error_preserves_inner_io_error_as_source() {
         let inner = io::Error::new(io::ErrorKind::NotFound, "missing /proc entry");
-        let inner_kind = inner.kind();
         let inner_msg = inner.to_string();
-        let wrapped = io::Error::new(inner_kind, CurrentDirLookupError(inner));
+        // Mirror spawn_child's wrapping: kind is forced to Other
+        // so Error::exit_code routes through the 126 branch
+        // (found, not executable) instead of the 127 branch
+        // (command not found), which would lie about which
+        // artifact is missing.
+        let wrapped = io::Error::other(CurrentDirLookupError(inner));
         // Display layer carries the human-readable context.
         assert!(wrapped
             .to_string()
@@ -607,7 +620,7 @@ mod tests {
             .source()
             .expect("source preserved");
         assert!(src.to_string().contains(&inner_msg));
-        assert_eq!(wrapped.kind(), inner_kind);
+        assert_eq!(wrapped.kind(), io::ErrorKind::Other);
     }
 
     // ---- resolve_command_path (RD finding #2) ---------------
