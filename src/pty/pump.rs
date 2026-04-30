@@ -206,4 +206,79 @@ mod real_pump {
             "expected 'hi' in captured output, got: {captured:?}"
         );
     }
+
+    // Issue #35 specifies that host stdin EOF must close the
+    // child's PTY so the wrapped command can exit. /bin/echo
+    // doesn't read stdin and therefore can't validate that
+    // semantics; /bin/cat does -- it stays alive until its
+    // PTY input EOFs. This test pins the host->child EOF
+    // propagation path end-to-end. We deliberately do NOT
+    // assert on captured bytes (PTY line discipline echoes
+    // input, making byte-level comparisons fragile); the
+    // contract under test is "host stdin Cursor drains ->
+    // host_to_child returns ReaderEof -> writer drops ->
+    // child observes EOF -> child exits cleanly within
+    // budget".
+    #[test]
+    fn pump_host_to_child_eof_makes_cat_exit() {
+        let mut session =
+            spawn_child(OsStr::new("/bin/cat"), &[], pty_size_80x24()).expect("spawn /bin/cat");
+
+        let mut killer = session.child.clone_killer();
+        let sink = SharedSink::default();
+        // Finite payload: cursor drains -> host_to_child EOFs
+        // -> writer drops -> cat sees EOT on slave -> exits.
+        let host_stdin = Cursor::new(b"hello\n".to_vec());
+
+        let pump = start_io_pump(&mut session, host_stdin, sink.clone()).expect("start_io_pump");
+
+        let wait_deadline = Instant::now() + WAIT_BUDGET;
+        let status = loop {
+            match session.child.try_wait() {
+                Ok(Some(s)) => break s,
+                Ok(None) => {
+                    if Instant::now() >= wait_deadline {
+                        let _ = killer.kill();
+                        panic!(
+                            "cat did not exit on host stdin EOF within {WAIT_BUDGET:?}; \
+                             host->child EOF propagation likely regressed"
+                        );
+                    }
+                    thread::sleep(WAIT_POLL);
+                }
+                Err(e) => {
+                    let _ = killer.kill();
+                    panic!("child wait failed: {e}");
+                }
+            }
+        };
+        drop(session);
+
+        let h2c = join_within(pump.host_to_child.join, JOIN_BUDGET, "host_to_child")
+            .expect("host_to_child returned io::Error");
+        let c2h = join_within(pump.child_to_host.join, JOIN_BUDGET, "child_to_host")
+            .expect("child_to_host returned io::Error");
+
+        assert!(status.success(), "cat exited non-zero: {status:?}");
+        assert_eq!(
+            h2c,
+            ForwarderExit::ReaderEof { bytes: 6 },
+            "host_to_child should drain the 6-byte cursor"
+        );
+        assert!(
+            matches!(
+                c2h,
+                ForwarderExit::ReaderEof { .. } | ForwarderExit::WriterClosed { .. }
+            ),
+            "unexpected child_to_host exit: {c2h:?}"
+        );
+        // Sanity: cat must have produced *some* bytes (echoed
+        // input under PTY line discipline). Don't pin the
+        // exact content -- termios cooked-mode echo is host-
+        // dependent.
+        assert!(
+            !sink.snapshot().is_empty(),
+            "cat produced no PTY output -- pump didn't forward anything"
+        );
+    }
 }
