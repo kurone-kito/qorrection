@@ -31,6 +31,7 @@
 //! call using the PR 2 spawn primitives.
 
 mod forward;
+mod pump;
 mod size;
 mod spawn;
 
