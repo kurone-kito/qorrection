@@ -713,3 +713,163 @@ mod tests {
         drop(pump.child_to_host);
     }
 }
+
+// Real-PTY integration tests for the supervisor. Mirrors the
+// bounded-deadline pattern from `tests/pty_smoke.rs`,
+// `src/pty/spawn.rs::real_spawn`, and `src/pty/pump.rs::real_pump`
+// (constants duplicated locally per repo convention).
+#[cfg(all(test, unix))]
+mod real_session {
+    use super::*;
+    use crate::pty::pump::start_io_pump;
+    use crate::pty::spawn::spawn_child;
+    use portable_pty::PtySize;
+    use std::ffi::{OsStr, OsString};
+    use std::io::Cursor;
+    use std::sync::{Arc, Mutex};
+
+    const JOIN_BUDGET: Duration = Duration::from_secs(5);
+    const WAIT_BUDGET: Duration = Duration::from_secs(5);
+    const WAIT_POLL: Duration = Duration::from_millis(20);
+
+    fn pty_size_80x24() -> PtySize {
+        PtySize {
+            cols: 80,
+            rows: 24,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
+    }
+
+    fn supervisor_deadlines() -> Deadlines {
+        Deadlines {
+            child_wait_deadline: Some(WAIT_BUDGET),
+            forwarder_join_budget: JOIN_BUDGET,
+            wait_poll: WAIT_POLL,
+        }
+    }
+
+    /// Shared `Write` sink so the integration test can inspect
+    /// what the `child_to_host` forwarder produced after the
+    /// supervisor returns.
+    #[derive(Clone, Default)]
+    struct SharedSink {
+        inner: Arc<Mutex<Vec<u8>>>,
+    }
+    impl SharedSink {
+        fn snapshot(&self) -> Vec<u8> {
+            self.inner.lock().unwrap().clone()
+        }
+    }
+    impl io::Write for SharedSink {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.inner.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Drive the supervisor end-to-end against a shell command
+    /// fragment. Returns the supervisor result and the captured
+    /// child->host bytes.
+    fn run_against_sh(script: &str, host_stdin: Vec<u8>) -> (Result<ExitCode>, Vec<u8>) {
+        let mut session = spawn_child(
+            OsStr::new("/bin/sh"),
+            &[OsString::from("-c"), OsString::from(script)],
+            pty_size_80x24(),
+        )
+        .expect("spawn /bin/sh");
+        let sink = SharedSink::default();
+        let pump = start_io_pump(&mut session, Cursor::new(host_stdin), sink.clone())
+            .expect("start_io_pump");
+        let result = run_pump_session(session, pump);
+        (result, sink.snapshot())
+    }
+
+    #[test]
+    fn supervisor_propagates_clean_exit() {
+        let (res, _) = run_against_sh("exit 0", Vec::new());
+        let code = res.expect("clean exit must be Ok");
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+    }
+
+    #[test]
+    fn supervisor_propagates_nonzero_exit() {
+        let (res, _) = run_against_sh("exit 7", Vec::new());
+        let code = res.expect("nonzero clean exit must be Ok");
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::from(7)));
+    }
+
+    #[test]
+    fn supervisor_propagates_signal_death() {
+        // RD finding 6: `exec sleep 30` so the SIGTERM stops
+        // sleep itself (the shell exec'd into it), avoiding a
+        // shell zombie or timing race where the shell ignores
+        // SIGTERM and waits for sleep.
+        let mut session = spawn_child(
+            OsStr::new("/bin/sh"),
+            &[OsString::from("-c"), OsString::from("exec sleep 30")],
+            pty_size_80x24(),
+        )
+        .expect("spawn /bin/sh");
+
+        let mut term = session.child.clone_killer();
+        let sink = SharedSink::default();
+        let pump = start_io_pump(&mut session, Cursor::new(Vec::<u8>::new()), sink)
+            .expect("start_io_pump");
+
+        // Signal the child BEFORE handing the session to the
+        // supervisor so the very first poll sees a signal
+        // status. portable-pty's ChildKiller for unix actually
+        // sends SIGHUP (verified in portable-pty 0.9.0
+        // src/lib.rs:328), not SIGTERM, so we expect signum=1.
+        term.kill().expect("send SIGHUP to child via clone_killer");
+        let res = run_pump_session(session, pump);
+        let err = res.expect_err("signal death must be Err");
+        match err {
+            Error::Signal { signum } => assert_eq!(
+                signum, 1,
+                "portable-pty ChildKiller sends SIGHUP=1; got {signum} \
+                 (locale-dependent strsignal mapping?)"
+            ),
+            other => panic!("expected Signal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn supervisor_converges_on_host_stdin_eof() {
+        // /bin/cat stays alive until its PTY input EOFs. With a
+        // 6-byte cursor the host_to_child forwarder drains
+        // immediately, the writer is dropped, cat sees EOT,
+        // and exits cleanly. The supervisor must converge.
+        let (res, _) = run_against_sh("exec cat", b"hello\n".to_vec());
+        let code = res.expect("cat must exit cleanly on host stdin EOF");
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+    }
+
+    #[test]
+    fn supervisor_drains_buffered_child_output() {
+        // RD finding 10: a child that writes output and then
+        // exits non-zero must not have its output truncated by
+        // the supervisor's drain phase. The captured sink
+        // should contain "hello" AND the exit code must be 3.
+        let (res, captured) = run_against_sh("printf hello && exit 3", Vec::new());
+        let code = res.expect("nonzero exit must be Ok");
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::from(3)));
+        let s = String::from_utf8_lossy(&captured);
+        assert!(
+            s.contains("hello"),
+            "buffered child output truncated: captured = {s:?}"
+        );
+    }
+
+    // Suppress warnings for unused supervisor_deadlines until a
+    // future test needs the custom budget shape; production
+    // entry uses Deadlines::production() under the hood.
+    #[allow(dead_code)]
+    fn _keep_deadlines_used() -> Deadlines {
+        supervisor_deadlines()
+    }
+}
