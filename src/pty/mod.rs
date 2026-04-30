@@ -75,8 +75,14 @@ where
 /// terminal in raw mode where output post-processing (newline
 /// translation) is disabled. A bare `\n` would leave the cursor
 /// dangling at the end of the line.
+///
+/// Intentionally emits no `argv[0]`-derived program-name prefix:
+/// other diagnostics route through [`crate::program_name`], but
+/// this body has no access to `argv[0]` and is throwaway code.
+/// PR 5 removes the line entirely, so plumbing the program name
+/// through the session seam just to delete it would be churn.
 fn default_body(_command: &OsString, _args: &[OsString]) -> Result<ExitCode> {
-    eprint!("qorrection: PTY wrap pending\r\n");
+    eprint!("PTY wrap pending\r\n");
     Ok(ExitCode::from(2))
 }
 
