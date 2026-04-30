@@ -27,6 +27,7 @@
 //! call.
 
 mod size;
+mod spawn;
 
 use std::ffi::OsString;
 use std::process::ExitCode;
