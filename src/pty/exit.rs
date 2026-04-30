@@ -276,6 +276,7 @@ mod tests {
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::from(0)));
     }
 
+    #[cfg(unix)]
     #[test]
     fn english_terminated_maps_to_15() {
         let status = ExitStatus::with_signal("Terminated");
@@ -283,6 +284,7 @@ mod tests {
         assert!(matches!(err, Error::Signal { signum: 15 }));
     }
 
+    #[cfg(unix)]
     #[test]
     fn english_killed_maps_to_9() {
         let status = ExitStatus::with_signal("Killed");
@@ -290,6 +292,7 @@ mod tests {
         assert!(matches!(err, Error::Signal { signum: 9 }));
     }
 
+    #[cfg(unix)]
     #[test]
     fn english_hangup_maps_to_1() {
         let status = ExitStatus::with_signal("Hangup");
@@ -297,6 +300,7 @@ mod tests {
         assert!(matches!(err, Error::Signal { signum: 1 }));
     }
 
+    #[cfg(unix)]
     #[test]
     fn english_interrupt_maps_to_2() {
         let status = ExitStatus::with_signal("Interrupt");
