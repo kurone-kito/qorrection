@@ -166,18 +166,18 @@ impl SupervisedChild for PtyChild {
 /// RAII guard that best-effort `kill()`s the child unless
 /// disarmed. Documented invariant: armed until a successful
 /// wait returns and consumes a status. See module-level docs.
-struct KillOnDropGuard {
+pub(crate) struct KillOnDropGuard {
     killer: Option<Box<dyn ChildKiller + Send + Sync>>,
 }
 
 impl KillOnDropGuard {
-    fn armed(killer: Box<dyn ChildKiller + Send + Sync>) -> Self {
+    pub(crate) fn armed(killer: Box<dyn ChildKiller + Send + Sync>) -> Self {
         Self {
             killer: Some(killer),
         }
     }
 
-    fn disarm(&mut self) {
+    pub(crate) fn disarm(&mut self) {
         self.killer = None;
     }
 }

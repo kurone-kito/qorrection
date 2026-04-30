@@ -147,7 +147,16 @@ fn default_body(command: &OsString, args: &[OsString]) -> Result<ExitCode> {
         "wrap session: spawning child on PTY"
     );
     let mut session = spawn::spawn_child(command, args, size)?;
+    // Cover the spawn -> pump handoff: if `start_io_pump` fails
+    // (e.g. `try_clone_reader` / `take_writer` returns an error)
+    // we'd otherwise drop `SpawnedSession` without killing the
+    // child — `Box<dyn portable_pty::Child>`'s Drop is documented
+    // not to kill or wait. The guard kills on early-return and is
+    // disarmed once `run_pump_session` takes over (it installs
+    // its own internal `KillOnDropGuard`).
+    let mut kill_guard = session::KillOnDropGuard::armed(session.child.clone_killer());
     let pump = pump::start_io_pump(&mut session, std::io::stdin(), std::io::stdout())?;
+    kill_guard.disarm();
     session::run_pump_session(session, pump)
 }
 
