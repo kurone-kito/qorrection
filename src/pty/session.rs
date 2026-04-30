@@ -81,6 +81,13 @@ pub(crate) struct Deadlines {
     /// supervisor from busy-looping; small enough that signal
     /// death is observed promptly.
     pub wait_poll: Duration,
+    /// After the supervisor escalates a kill, how long it polls
+    /// `try_wait()` before giving up. Bounds the failure path
+    /// when a child catches/ignores the kill signal — without
+    /// this, a blocking `child.wait()` could hang indefinitely
+    /// and defeat the coupled-state-machine convergence
+    /// guarantee.
+    pub post_kill_wait_budget: Duration,
 }
 
 impl Deadlines {
@@ -94,6 +101,7 @@ impl Deadlines {
             child_wait_deadline: None,
             forwarder_join_budget: Duration::from_secs(5),
             wait_poll: Duration::from_millis(20),
+            post_kill_wait_budget: Duration::from_secs(5),
         }
     }
 }
@@ -262,9 +270,18 @@ where
                 // still running and drop() is the last defense.
                 return Err(wrap_io("stalled supervisor; kill escalation failed", e));
             }
-            match child.wait() {
-                Ok(s) => break s,
-                Err(e) => return Err(wrap_io("child wait after kill", e)),
+            match wait_with_budget(
+                &mut child,
+                deadlines.post_kill_wait_budget,
+                deadlines.wait_poll,
+            )? {
+                Some(s) => break s,
+                None => {
+                    return Err(wrap_io(
+                        "stalled supervisor; child did not exit within post-kill budget",
+                        io::Error::new(io::ErrorKind::TimedOut, "post-kill wait budget exceeded"),
+                    ));
+                }
             }
         }
 
@@ -277,9 +294,21 @@ where
                     // still running and drop() is the last defense.
                     return Err(wrap_io("deadline reached; kill escalation failed", e));
                 }
-                match child.wait() {
-                    Ok(s) => break s,
-                    Err(e) => return Err(wrap_io("child wait after deadline kill", e)),
+                match wait_with_budget(
+                    &mut child,
+                    deadlines.post_kill_wait_budget,
+                    deadlines.wait_poll,
+                )? {
+                    Some(s) => break s,
+                    None => {
+                        return Err(wrap_io(
+                            "deadline reached; child did not exit within post-kill budget",
+                            io::Error::new(
+                                io::ErrorKind::TimedOut,
+                                "post-kill wait budget exceeded",
+                            ),
+                        ));
+                    }
                 }
             }
         }
@@ -314,6 +343,29 @@ fn escalate_kill<C: SupervisedChild>(child: &mut C) -> io::Result<()> {
         return Err(e);
     }
     Ok(())
+}
+
+/// Bounded post-kill wait: poll `try_wait()` for up to `budget`,
+/// sleeping `poll` between ticks. Returns `Ok(Some(status))` if
+/// the child exits in time, `Ok(None)` if the budget elapses
+/// (caller surfaces a timeout), or `Err` on a `try_wait` failure.
+fn wait_with_budget<C: SupervisedChild>(
+    child: &mut C,
+    budget: Duration,
+    poll: Duration,
+) -> Result<Option<ExitStatus>> {
+    let deadline = Instant::now() + budget;
+    loop {
+        match child.try_wait() {
+            Ok(Some(s)) => return Ok(Some(s)),
+            Ok(None) => {}
+            Err(e) => return Err(wrap_io("child try_wait after kill", e)),
+        }
+        if Instant::now() >= deadline {
+            return Ok(None);
+        }
+        std::thread::sleep(poll);
+    }
 }
 
 /// Non-blocking peek + extract. If the handle is finished, join
@@ -475,6 +527,7 @@ mod tests {
             child_wait_deadline: Some(Duration::from_secs(2)),
             forwarder_join_budget: Duration::from_millis(500),
             wait_poll: Duration::from_millis(2),
+            post_kill_wait_budget: Duration::from_millis(500),
         }
     }
 
@@ -582,6 +635,7 @@ mod tests {
             child_wait_deadline: Some(Duration::from_secs(2)),
             forwarder_join_budget: Duration::from_millis(50),
             wait_poll: Duration::from_millis(2),
+            post_kill_wait_budget: Duration::from_millis(500),
         };
         // Catch the "both forwarders finish" escalation by NOT
         // letting them finish — but quiet pump finishes
@@ -778,6 +832,7 @@ mod real_session {
             child_wait_deadline: Some(WAIT_BUDGET),
             forwarder_join_budget: JOIN_BUDGET,
             wait_poll: WAIT_POLL,
+            post_kill_wait_budget: WAIT_BUDGET,
         }
     }
 
