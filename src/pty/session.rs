@@ -72,10 +72,22 @@ pub(crate) struct Deadlines {
     /// child). `None` in production (poll forever). Tests pass
     /// a tight value (e.g. 50ms) for bounded runtime.
     pub child_wait_deadline: Option<Duration>,
-    /// Maximum time spent joining each forwarder thread after
-    /// the child has exited. On timeout the join handle is
-    /// dropped and a `warn!` is emitted (detached-thread mode).
+    /// Maximum time spent joining the `ChildToHost` forwarder
+    /// thread after the child has exited. On timeout the join
+    /// handle is dropped and a `warn!` is emitted (detached-
+    /// thread mode). Drains pending child output that the
+    /// forwarder may still be writing to host stdout.
     pub forwarder_join_budget: Duration,
+    /// Same as `forwarder_join_budget` but for the
+    /// `HostToChild` direction. Production sets this to **zero**
+    /// because once the child has exited there is nothing useful
+    /// the host->child forwarder can deliver: the user's
+    /// in-flight keystrokes are now meaningless input. Without
+    /// the split, an interactive session blocked in `stdin.read()`
+    /// would hold the supervisor for the full 5 s join budget on
+    /// every clean exit, making each `q9 vim` (etc.) appear to
+    /// hang for 5 s after the wrapped editor quit.
+    pub host_to_child_post_exit_budget: Duration,
     /// Sleep between successive `try_wait` ticks. Keeps the
     /// supervisor from busy-looping; small enough that signal
     /// death is observed promptly.
@@ -98,6 +110,10 @@ impl Deadlines {
         Self {
             child_wait_deadline: None,
             forwarder_join_budget: Duration::from_secs(5),
+            // Detach the host->stdin reader immediately on child
+            // exit; see field doc for why a non-zero value would
+            // hang every interactive session for 5 s.
+            host_to_child_post_exit_budget: Duration::ZERO,
             wait_poll: Duration::from_millis(20),
             post_kill_wait_budget: Duration::from_secs(5),
         }
@@ -322,7 +338,10 @@ where
 
     // Phase 2: drain remaining forwarders within budget.
     if let Some(h) = h2c.take() {
-        h2c_result = Some(join_with_budget(h, deadlines.forwarder_join_budget));
+        h2c_result = Some(join_with_budget(
+            h,
+            deadlines.host_to_child_post_exit_budget,
+        ));
     }
     if let Some(h) = c2h.take() {
         c2h_result = Some(join_with_budget(h, deadlines.forwarder_join_budget));
@@ -521,6 +540,7 @@ mod tests {
         Deadlines {
             child_wait_deadline: Some(Duration::from_secs(2)),
             forwarder_join_budget: Duration::from_millis(500),
+            host_to_child_post_exit_budget: Duration::from_millis(500),
             wait_poll: Duration::from_millis(2),
             post_kill_wait_budget: Duration::from_millis(500),
         }
@@ -571,6 +591,72 @@ mod tests {
             host_to_child,
             child_to_host,
         }
+    }
+
+    /// Build a pump where `HostToChild` is hung in `read()`
+    /// forever but `ChildToHost` terminates instantly. Used by
+    /// the regression test that pins the production
+    /// `host_to_child_post_exit_budget = 0` invariant — the
+    /// supervisor must detach the hung stdin reader without
+    /// waiting the full `forwarder_join_budget`.
+    fn hung_h2c_quiet_c2h_pump() -> IoPump {
+        struct ForeverReader;
+        impl io::Read for ForeverReader {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                loop {
+                    std::thread::park_timeout(Duration::from_secs(60));
+                }
+            }
+        }
+        struct DiscardWriter;
+        impl io::Write for DiscardWriter {
+            fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let host_to_child = spawn_forwarder(Direction::HostToChild, ForeverReader, DiscardWriter);
+        let c2h_in: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let c2h_out: Vec<u8> = Vec::new();
+        let child_to_host = spawn_forwarder(Direction::ChildToHost, c2h_in, c2h_out);
+        IoPump {
+            host_to_child,
+            child_to_host,
+        }
+    }
+
+    /// Regression for rubber-duck finding #1 (PR 5): with
+    /// production deadlines, an interactive `q9` session whose
+    /// `HostToChild` reader is blocked in `stdin.read()` must
+    /// not stall the supervisor for the full
+    /// `forwarder_join_budget` (5 s) on clean child exit. The
+    /// production split sets `host_to_child_post_exit_budget`
+    /// to zero so the hung handle is detached immediately.
+    #[test]
+    fn production_deadlines_detach_hung_host_to_child_immediately() {
+        // child_wait_deadline=None in production; switch to a
+        // bounded value here so the test cannot hang on a
+        // try_wait regression. Keep the per-direction budgets
+        // exactly as production() sets them.
+        let mut deadlines = Deadlines::production();
+        deadlines.child_wait_deadline = Some(Duration::from_secs(2));
+        deadlines.wait_poll = Duration::from_millis(2);
+
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 0);
+        let start = Instant::now();
+        let code = run_pump_session_with(child, hung_h2c_quiet_c2h_pump(), deadlines)
+            .expect("clean exit with hung h2c must still be Ok");
+        let elapsed = start.elapsed();
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        // Generous slack but well under the 5 s production
+        // forwarder_join_budget the bug would have triggered.
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "supervisor stalled on hung HostToChild: {elapsed:?}"
+        );
     }
 
     #[test]
@@ -631,6 +717,7 @@ mod tests {
         let deadlines = Deadlines {
             child_wait_deadline: Some(Duration::from_secs(2)),
             forwarder_join_budget: Duration::from_millis(50),
+            host_to_child_post_exit_budget: Duration::from_millis(50),
             wait_poll: Duration::from_millis(2),
             post_kill_wait_budget: Duration::from_millis(500),
         };
@@ -828,6 +915,7 @@ mod real_session {
         Deadlines {
             child_wait_deadline: Some(WAIT_BUDGET),
             forwarder_join_budget: JOIN_BUDGET,
+            host_to_child_post_exit_budget: JOIN_BUDGET,
             wait_poll: WAIT_POLL,
             post_kill_wait_budget: WAIT_BUDGET,
         }
