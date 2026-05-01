@@ -91,9 +91,11 @@ where
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let n = self.inner.read(buf)?;
         if n > 0 {
-            observe_detected_input(&self.input, &buf[..n], |outcome| {
+            if let Err(err) = observe_detected_input(&self.input, &buf[..n], |outcome| {
                 tracing::info!(?outcome, "trigger detect-only: matched host input trigger");
-            })?;
+            }) {
+                tracing::warn!(error = %err, "trigger detect-only observation failed");
+            }
         }
         Ok(n)
     }
@@ -254,6 +256,37 @@ mod tests {
         assert_eq!(detector.read(&mut byte).unwrap(), 0);
 
         assert_eq!(detect_for_test(&input, b":wq\n"), vec![Outcome::Wq]);
+    }
+
+    #[test]
+    fn input_detector_observes_into_shared_pump() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(Cursor::new(b":".to_vec()), input.clone());
+        let mut out = Vec::new();
+
+        detector.read_to_end(&mut out).unwrap();
+
+        assert_eq!(out, b":");
+        assert_eq!(detect_for_test(&input, b"q\n"), vec![Outcome::Q]);
+    }
+
+    #[test]
+    fn input_detector_keeps_forwarding_when_observer_fails() {
+        let input = shared_input_pump();
+        let _ = std::panic::catch_unwind({
+            let input = input.clone();
+            move || {
+                let _guard = input.lock().unwrap();
+                panic!("poison trigger input mutex for test");
+            }
+        });
+
+        let mut detector = InputDetector::new(Cursor::new(b":q\n".to_vec()), input);
+        let mut out = Vec::new();
+
+        detector.read_to_end(&mut out).unwrap();
+
+        assert_eq!(out, b":q\n");
     }
 
     #[test]
