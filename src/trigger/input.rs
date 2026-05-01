@@ -18,6 +18,7 @@
 //! unchanged; later phases can use the same observations to route
 //! matching trigger bytes away from the child.
 
+use std::io::{self, Read};
 use std::sync::{Arc, Mutex};
 
 use super::{
@@ -63,6 +64,59 @@ pub type SharedInputPump = Arc<Mutex<InputPump>>;
 
 pub fn shared_input_pump() -> SharedInputPump {
     Arc::new(Mutex::new(InputPump::new()))
+}
+
+/// Host-input [`Read`] adapter for Phase 3 detect-only wiring.
+///
+/// The adapter preserves the byte stream exactly as read from the
+/// wrapped reader. It only mirrors accepted host-input bytes into
+/// the shared [`InputPump`] and emits an `info` diagnostic when a
+/// trigger literal is detected.
+#[derive(Debug)]
+pub struct InputDetector<R> {
+    inner: R,
+    input: SharedInputPump,
+}
+
+impl<R> InputDetector<R> {
+    pub fn new(inner: R, input: SharedInputPump) -> Self {
+        Self { inner, input }
+    }
+}
+
+impl<R> Read for InputDetector<R>
+where
+    R: Read,
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n > 0 {
+            observe_detected_input(&self.input, &buf[..n], |outcome| {
+                tracing::info!(?outcome, "trigger detect-only: matched host input trigger");
+            })?;
+        }
+        Ok(n)
+    }
+}
+
+fn observe_detected_input<F>(
+    input: &SharedInputPump,
+    bytes: &[u8],
+    mut on_detect: F,
+) -> io::Result<()>
+where
+    F: FnMut(Outcome),
+{
+    let mut input = input.lock().map_err(|_| {
+        io::Error::other("trigger input pump mutex poisoned while observing host input")
+    })?;
+    for &b in bytes {
+        let outcome = input.feed_input_byte(b).outcome();
+        if outcome != Outcome::None {
+            on_detect(outcome);
+        }
+    }
+    Ok(())
 }
 
 /// Pure state machine for input-side trigger detection.
@@ -137,6 +191,7 @@ impl InputPump {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
 
     const BEGIN_PASTE: &[u8] = b"\x1b[200~";
     const END_PASTE: &[u8] = b"\x1b[201~";
@@ -149,6 +204,56 @@ mod tests {
             .map(|&b| pump.feed_input_byte(b).outcome())
             .filter(|&outcome| outcome != Outcome::None)
             .collect()
+    }
+
+    fn detect_for_test(input: &SharedInputPump, bytes: &[u8]) -> Vec<Outcome> {
+        let mut detected = Vec::new();
+        observe_detected_input(input, bytes, |outcome| detected.push(outcome)).unwrap();
+        detected
+    }
+
+    #[test]
+    fn detect_only_helper_reports_plain_trigger() {
+        let input = shared_input_pump();
+        let detected = detect_for_test(&input, b":wq\n");
+
+        assert_eq!(detected, vec![Outcome::Wq]);
+    }
+
+    #[test]
+    fn detect_only_helper_respects_alt_screen_state() {
+        let input = shared_input_pump();
+        input.lock().unwrap().feed_child_output_slice(ENTER_ALT);
+
+        assert_eq!(detect_for_test(&input, b":q\n"), vec![]);
+
+        input.lock().unwrap().feed_child_output_slice(LEAVE_ALT);
+        assert_eq!(detect_for_test(&input, b":q!\n"), vec![Outcome::QBang]);
+    }
+
+    #[test]
+    fn input_detector_forwards_bytes_unchanged() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(Cursor::new(b":q\n".to_vec()), input);
+        let mut out = Vec::new();
+
+        detector.read_to_end(&mut out).unwrap();
+
+        assert_eq!(out, b":q\n");
+    }
+
+    #[test]
+    fn input_detector_preserves_cross_read_state() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(Cursor::new(b":q\n".to_vec()), input.clone());
+        let mut byte = [0u8; 1];
+
+        assert_eq!(detector.read(&mut byte).unwrap(), 1);
+        assert_eq!(detector.read(&mut byte).unwrap(), 1);
+        assert_eq!(detector.read(&mut byte).unwrap(), 1);
+        assert_eq!(detector.read(&mut byte).unwrap(), 0);
+
+        assert_eq!(detect_for_test(&input, b":wq\n"), vec![Outcome::Wq]);
     }
 
     #[test]
