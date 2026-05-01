@@ -5,7 +5,15 @@ mod support;
 use assert_cmd::Command;
 
 fn q9() -> Command {
-    Command::cargo_bin("q9").expect("q9 bin built")
+    let mut cmd = Command::cargo_bin("q9").expect("q9 bin built");
+    // Hermetic stderr: any future `tracing` call site that
+    // honours `QORRECTION_LOG` from the outer environment would
+    // otherwise make `assert_no_escape("stderr", ...)` flaky on
+    // contributor machines or CI runners that opt in to debug
+    // logging globally. Mirror the convention from
+    // tests/tracing_env.rs and explicitly clear the variable.
+    cmd.env_remove("QORRECTION_LOG");
+    cmd
 }
 
 #[test]
