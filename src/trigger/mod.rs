@@ -4,6 +4,7 @@
 //! typed a Vim-style quit literal at an interactive prompt:
 //!
 //! - [`input`]     -- combined input-side pump state machine
+//! - [`output`]    -- child-output arbiter that updates alt-screen state
 //! - [`paste`]     -- bracketed-paste tracker (suppress while pasted)
 //! - [`altscreen`] -- alt-screen tracker on the **output** side
 //!   (suppress while a TUI like vim is up)
@@ -15,5 +16,6 @@
 
 pub mod altscreen;
 pub mod input;
+pub mod output;
 pub mod parser;
 pub mod paste;

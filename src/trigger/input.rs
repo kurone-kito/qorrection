@@ -18,6 +18,8 @@
 //! unchanged; later phases can use the same observations to route
 //! matching trigger bytes away from the child.
 
+use std::sync::{Arc, Mutex};
+
 use super::{
     altscreen::AltScreenTracker,
     parser::{Outcome, Parser},
@@ -53,6 +55,14 @@ impl InputObservation {
             Self::Parsed(outcome) => outcome,
         }
     }
+}
+
+/// Shared input-pump state used by the host-input and child-output
+/// pump halves.
+pub type SharedInputPump = Arc<Mutex<InputPump>>;
+
+pub fn shared_input_pump() -> SharedInputPump {
+    Arc::new(Mutex::new(InputPump::new()))
 }
 
 /// Pure state machine for input-side trigger detection.

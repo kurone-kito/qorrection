@@ -12,6 +12,7 @@ use std::io::{Read, Write};
 
 use crate::pty::forward::{spawn_forwarder, Direction, ForwarderHandle};
 use crate::pty::spawn::SpawnedSession;
+use crate::trigger::{input::shared_input_pump, output::OutputArbiter};
 use crate::{Error, Result};
 
 /// Owning bundle of the host↔child forwarder threads.
@@ -49,6 +50,8 @@ where
 {
     let pty_reader = session.master.try_clone_reader().map_err(Error::Pty)?;
     let pty_writer = session.master.take_writer().map_err(Error::Pty)?;
+    let trigger_input = shared_input_pump();
+    let host_stdout = OutputArbiter::new(host_stdout, trigger_input);
 
     let host_to_child = spawn_forwarder(Direction::HostToChild, host_stdin, pty_writer);
     let child_to_host = spawn_forwarder(Direction::ChildToHost, pty_reader, host_stdout);
