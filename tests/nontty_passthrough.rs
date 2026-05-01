@@ -27,9 +27,14 @@ fn piped_stdin_reaches_armed_child_without_animation() {
         .success();
 
     let output = assert.get_output();
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains(":q"),
-        "expected child stdout to contain piped input, got {:?}",
+    // Equality (not `contains`) so the "without animation"
+    // contract this PR exists to test would actually fail if a
+    // regression appended a plain-text fallback banner or any
+    // other non-escape bytes alongside the trigger payload.
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        ":q\n",
+        "expected child stdout to be exactly the piped trigger, got {:?}",
         String::from_utf8_lossy(&output.stdout)
     );
     assert_no_escape("stdout", &output.stdout);
