@@ -31,6 +31,10 @@ this contract. The real host-input pump feeds user bytes through
 through `InputPump::feed_child_output_byte` so alternate-screen state
 can disarm input parsing.
 
+`trigger::output::OutputArbiter` is the canonical child-output
+adapter. It forwards child output unchanged and feeds the bytes that
+were accepted by the host writer into the shared `InputPump`.
+
 The input pump must snapshot tracker state before each byte,
 feed the byte into `PasteTracker`, and bypass `Parser` when either
 the pre-byte or post-byte paste state is active. It must also call
