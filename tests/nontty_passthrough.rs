@@ -66,3 +66,28 @@ fn assert_no_escape(label: &str, bytes: &[u8]) {
         String::from_utf8_lossy(bytes)
     );
 }
+
+/// Issue #24 E2E coverage: a non-TTY passthrough child killed
+/// by SIGTERM must surface as host exit `128 + 15 = 143`. The
+/// PTY path is covered by `tests/pty_e2e.rs`; this pins the
+/// other branch in `pty/mod.rs::non_tty_passthrough`, where
+/// `std::process::ExitStatus` flows through
+/// `portable_pty::ExitStatus::from(...)` (which preserves
+/// `ExitStatusExt::signal()` on Unix) and then through
+/// `map_exit_status`.
+///
+/// q9 itself exits cleanly with status 143 — it is *not*
+/// killed by a signal — so `assert_cmd`'s exit-code matcher
+/// is the right surface here.
+#[cfg(unix)]
+#[test]
+fn nontty_sigterm_propagates_as_143() {
+    q9()
+        // Force the non-TTY bypass by piping stdin even though
+        // the helper does not consume it; assert_cmd already
+        // pipes stdout/stderr by default.
+        .write_stdin("")
+        .args(["sh", "-c", "kill -15 $$"])
+        .assert()
+        .code(143);
+}
