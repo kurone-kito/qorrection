@@ -63,14 +63,24 @@ mod unix {
         command.args(["sh", "-c", "kill -15 $$"]);
 
         let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
-        let _remaining = session.exp_eof()?;
+        let remaining = session.exp_eof()?;
 
         match session.process.wait()? {
-            WaitStatus::Exited(_, 143) => Ok(()),
+            WaitStatus::Exited(_, 143) => {}
             other => {
                 panic!("expected q9 to surface SIGTERM as exit 143, got {other:?}")
             }
         }
+
+        // Also assert the diagnostic so the test cannot pass on a
+        // child that merely exited cleanly with status 143; the
+        // PTY merges stdout+stderr so the eprintln from `lib.rs`
+        // appears on the master side captured by `exp_eof`.
+        assert!(
+            remaining.contains("child terminated by signal 15"),
+            "expected SIGTERM diagnostic on PTY output, got {remaining:?}"
+        );
+        Ok(())
     }
 }
 

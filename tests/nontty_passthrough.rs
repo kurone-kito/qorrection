@@ -82,6 +82,12 @@ fn assert_no_escape(label: &str, bytes: &[u8]) {
 #[cfg(unix)]
 #[test]
 fn nontty_sigterm_propagates_as_143() {
+    // Asserting the stderr diagnostic in addition to the exit
+    // code is what distinguishes a real signal-death (q9 takes
+    // the `Error::Signal` branch and prints
+    // `q9: child terminated by signal 15`) from a hypothetical
+    // child that simply exited cleanly with status 143. Without
+    // this, the test would still pass on the latter false case.
     q9()
         // Force the non-TTY bypass by piping stdin even though
         // the helper does not consume it; assert_cmd already
@@ -89,5 +95,8 @@ fn nontty_sigterm_propagates_as_143() {
         .write_stdin("")
         .args(["sh", "-c", "kill -15 $$"])
         .assert()
-        .code(143);
+        .code(143)
+        .stderr(predicates::str::contains(
+            "child terminated by signal 15",
+        ));
 }
