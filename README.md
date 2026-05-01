@@ -89,6 +89,8 @@ There are no other flags. Any unrecognized leading `-…` token
 `qorrection`). Trigger behavior, the 418 gag, and the wrapped
 program allowlist are all built in — none of them are
 configurable in v0.1.
+Detailed trigger edge policies, including bracketed paste, live in
+[docs/trigger-policy.md](docs/trigger-policy.md).
 
 ### Triggers (locked policy)
 

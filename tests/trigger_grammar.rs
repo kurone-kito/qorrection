@@ -12,11 +12,14 @@
 //!
 //! ```text
 //!     for each input byte b:
+//!         in_paste_before = paste.in_paste()
+//!         alt_before      = altscreen.is_alt_screen()
 //!         in_paste_after = paste.feed(b)
 //!         alt_after      = altscreen.feed(b)   // output side, but
 //!                                              // wired here for
 //!                                              // grammar tests
-//!         if in_paste_after || alt_after:
+//!         if in_paste_before || in_paste_after ||
+//!            alt_before || alt_after:
 //!             parser.reset()       // disarm boundary
 //!             continue              // bypass parser
 //!         outcome = parser.feed(b)
@@ -87,6 +90,15 @@ fn pasted_then_typed_quit_still_matches_after_paste() {
     stream.extend_from_slice(b"\x1b[201~");
     stream.extend_from_slice(b":q\n");
     assert_eq!(run(&stream), vec![Outcome::Q]);
+}
+
+#[test]
+fn unmarked_paste_like_quit_literal_is_plain_input() {
+    // v0.1 policy: qorrection does not enable bracketed-paste
+    // mode on its own. Without terminal-provided 200~/201~
+    // markers, pasted text and typed text are intentionally
+    // indistinguishable to the trigger pipeline.
+    assert_eq!(run(b":q\n"), vec![Outcome::Q]);
 }
 
 #[test]
