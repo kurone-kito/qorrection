@@ -10,7 +10,8 @@
 //!
 //! This tracker is a pure observer. It never mutates, buffers,
 //! or steals bytes; the caller keeps forwarding the original
-//! stream unchanged to both the child PTY and the parser. The
+//! stream unchanged to the child PTY and uses the tracker result
+//! to decide whether the trigger parser should see each byte. The
 //! tracker only answers one question:
 //! "after consuming the byte I just gave you, am I currently
 //! inside a bracketed-paste span?".
@@ -32,6 +33,19 @@
 //! the prefix. ESC anywhere -- including inside a paste span --
 //! restarts the recognizer, so a legitimate `\x1b[201~` end
 //! marker is still recognized when paste mode is on.
+//!
+//! ## v0.1 bracketed-paste policy
+//!
+//! The wrapper is **observer-only** for DEC private mode 2004:
+//! it never emits `\x1b[?2004h` / `\x1b[?2004l`, never strips
+//! bracketed-paste markers, and never fabricates them. If the
+//! child enables bracketed-paste mode, the terminal sends
+//! `\x1b[200~` / `\x1b[201~` in the user's input stream; the
+//! pump forwards those bytes to the child unchanged while this
+//! tracker uses them only to decide whether trigger parsing is
+//! temporarily disarmed. If the child does not enable mode 2004,
+//! pasted text is indistinguishable from typed text and remains
+//! eligible for normal trigger parsing.
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 enum State {
