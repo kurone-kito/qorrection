@@ -2,28 +2,18 @@
 //! the public trigger pipeline API.
 //!
 //! Unit tests in `src/trigger/*` cover each module in isolation.
-//! These integration tests pin the *combined* contract that the
-//! Phase E input-pump will rely on: paste tracker AND alt-screen
-//! tracker AND parser, all chained per their documented "feed
-//! returns post-byte state" semantics.
+//! These integration tests pin the *combined* contract exposed by
+//! `trigger::input::InputPump`: paste tracker AND alt-screen
+//! tracker AND parser, all chained behind the public byte-at-a-time
+//! pump API.
 //!
-//! Pump model under test (mirrors the Phase E pump's intended
-//! shape, minus the actual PTY I/O):
+//! Pump model under test (minus the actual PTY I/O):
 //!
 //! ```text
 //!     for each input byte b:
-//!         in_paste_before = paste.in_paste()
-//!         alt_before      = altscreen.is_alt_screen()
-//!         in_paste_after = paste.feed(b)
-//!         alt_after      = altscreen.feed(b)   // output side, but
-//!                                              // wired here for
-//!                                              // grammar tests
-//!         if in_paste_before || in_paste_after ||
-//!            alt_before || alt_after:
-//!             parser.reset()       // disarm boundary
-//!             continue              // bypass parser
-//!         outcome = parser.feed(b)
-//!         record(outcome)
+//!         observation = pump.feed_input_byte(b)
+//!         record(observation.outcome())
+//!         pump.feed_child_output_byte(b)   // output-side proxy
 //! ```
 //!
 //! Even though the alt-screen tracker really watches the
@@ -31,38 +21,23 @@
 //! sequence here is a sound proxy: any byte that toggles
 //! alt-screen would (by the rules of the protocol) appear on
 //! output too, and the disarm semantics we care about are the
-//! same on both sides.
+//! same on both sides. The proxy feeds output after input so the
+//! final byte of an alt-screen leave sequence is still bypassed
+//! by the pre-byte alt-screen state.
 
-use qorrection::trigger::{
-    altscreen::AltScreenTracker, parser::Outcome, parser::Parser, paste::PasteTracker,
-};
+use qorrection::trigger::{input::InputPump, parser::Outcome};
 
 /// Run a stream through the chained pipeline and return the
 /// list of non-`None` outcomes the parser emitted.
 fn run(stream: &[u8]) -> Vec<Outcome> {
-    let mut paste = PasteTracker::new();
-    let mut alt = AltScreenTracker::new();
-    let mut parser = Parser::new();
+    let mut pump = InputPump::new();
     let mut out = Vec::new();
     for &b in stream {
-        // Snapshot pre-byte state so the *terminating* byte of
-        // a paste-end / alt-screen-leave sequence is also kept
-        // away from the parser. Without this, the `~` of
-        // `\x1b[201~` and the `l` of `\x1b[?1049l` would reach
-        // the parser as a printable byte and dirty the next
-        // line.
-        let prev_paste = paste.in_paste();
-        let prev_alt = alt.is_alt_screen();
-        let in_paste = paste.feed(b);
-        let in_alt = alt.feed(b);
-        if prev_paste || in_paste || prev_alt || in_alt {
-            parser.reset();
-            continue;
-        }
-        let o = parser.feed(b);
+        let o = pump.feed_input_byte(b).outcome();
         if o != Outcome::None {
             out.push(o);
         }
+        pump.feed_child_output_byte(b);
     }
     out
 }

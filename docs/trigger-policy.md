@@ -25,6 +25,12 @@ line is treated exactly like a typed `:q` line.
 
 ## Pump Contract
 
+`trigger::input::InputPump` is the canonical pure state machine for
+this contract. The real host-input pump feeds user bytes through
+`InputPump::feed_input_byte`, while the output side feeds child bytes
+through `InputPump::feed_child_output_byte` so alternate-screen state
+can disarm input parsing.
+
 The input pump must snapshot tracker state before each byte,
 feed the byte into `PasteTracker`, and bypass `Parser` when either
 the pre-byte or post-byte paste state is active. It must also call
