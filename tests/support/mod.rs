@@ -16,9 +16,14 @@ pub struct ArmedHelper {
 
 impl ArmedHelper {
     /// Create a helper that echoes one stdin line to stdout.
+    ///
+    /// Both platforms read exactly one line of stdin and emit it
+    /// followed by a single LF, so the fixture's contract is
+    /// identical regardless of whether the underlying shell is
+    /// `/bin/sh` or `cmd.exe`.
     pub fn echo_stdin() -> Self {
         Self::from_scripts(
-            "#!/bin/sh\ncat\n",
+            "#!/bin/sh\nIFS= read -r line\nprintf '%s\\n' \"$line\"\n",
             "@echo off\r\nsetlocal EnableDelayedExpansion\r\nset /p line=\r\necho(!line!\r\n",
         )
     }
