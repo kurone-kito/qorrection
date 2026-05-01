@@ -3,6 +3,7 @@
 //! Pure byte-stream modules that decide whether the user just
 //! typed a Vim-style quit literal at an interactive prompt:
 //!
+//! - [`input`]     -- combined input-side pump state machine
 //! - [`paste`]     -- bracketed-paste tracker (suppress while pasted)
 //! - [`altscreen`] -- alt-screen tracker on the **output** side
 //!   (suppress while a TUI like vim is up)
@@ -13,5 +14,6 @@
 //! into the real input pump and output arbiter.
 
 pub mod altscreen;
+pub mod input;
 pub mod parser;
 pub mod paste;
