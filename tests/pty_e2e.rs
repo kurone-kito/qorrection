@@ -46,6 +46,42 @@ mod unix {
             other => panic!("expected q9 sh -c 'exit 7' to exit 7, got {other:?}"),
         }
     }
+
+    /// Issue #24 E2E coverage: a PTY child killed by SIGTERM
+    /// must propagate as host exit `128 + 15 = 143`. The unit
+    /// tests in `src/pty/exit.rs` and `src/error.rs` cover the
+    /// type-level mapping with mocks; this exercises the full
+    /// chain (real `portable-pty` reporting → `map_exit_status`
+    /// → `Error::Signal` → `ExitCode`) for the wrap path.
+    #[test]
+    fn q9_pty_sigterm_propagates_as_143() -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = q9();
+        // `kill -TERM $$` raises SIGTERM in the shell itself, so
+        // `Child::wait` reports termination by signal 15. Using
+        // an explicit numeric signal avoids depending on `kill`'s
+        // signal-name parsing across distributions.
+        command.args(["sh", "-c", "kill -15 $$"]);
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 143) => {}
+            other => {
+                panic!("expected q9 to surface SIGTERM as exit 143, got {other:?}")
+            }
+        }
+
+        // Also assert the diagnostic so the test cannot pass on a
+        // child that merely exited cleanly with status 143; the
+        // PTY merges stdout+stderr so the eprintln from `lib.rs`
+        // appears on the master side captured by `exp_eof`.
+        assert!(
+            remaining.contains("child terminated by signal 15"),
+            "expected SIGTERM diagnostic on PTY output, got {remaining:?}"
+        );
+        Ok(())
+    }
 }
 
 #[cfg(windows)]

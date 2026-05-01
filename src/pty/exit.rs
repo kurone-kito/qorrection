@@ -36,6 +36,18 @@
 //! to `signum = 0` — see [`crate::Error::exit_code`] which maps
 //! that to exit `128` (POSIX "killed by signal 0", a defined
 //! sentinel rather than wrapping or panicking).
+//!
+//! ## Test layering
+//!
+//! - **Unit** (this file + [`crate::error`]): mock
+//!   [`portable_pty::ExitStatus`] values cover every recovery
+//!   layer and the saturating `128 + signum` arithmetic.
+//! - **Integration / E2E** (`tests/pty_e2e.rs`,
+//!   `tests/nontty_passthrough.rs`): drive the shipped `q9`
+//!   binary through both wrap branches with `kill -15 $$` and
+//!   assert exit `143`, pinning the full chain
+//!   (`portable-pty` reporting → [`map_exit_status`] →
+//!   [`crate::Error::Signal`] → [`std::process::ExitCode`]).
 
 use std::process::ExitCode;
 
