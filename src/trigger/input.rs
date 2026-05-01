@@ -109,14 +109,20 @@ fn observe_detected_input<F>(
 where
     F: FnMut(Outcome),
 {
+    let mut detected = Vec::new();
     let mut input = input.lock().map_err(|_| {
         io::Error::other("trigger input pump mutex poisoned while observing host input")
     })?;
     for &b in bytes {
         let outcome = input.feed_input_byte(b).outcome();
         if outcome != Outcome::None {
-            on_detect(outcome);
+            detected.push(outcome);
         }
+    }
+    drop(input);
+
+    for outcome in detected {
+        on_detect(outcome);
     }
     Ok(())
 }
@@ -268,6 +274,22 @@ mod tests {
 
         assert_eq!(out, b":");
         assert_eq!(detect_for_test(&input, b"q\n"), vec![Outcome::Q]);
+    }
+
+    #[test]
+    fn observe_detected_input_releases_lock_before_callback() {
+        let input = shared_input_pump();
+        let mut detected = Vec::new();
+
+        observe_detected_input(&input, b":q\n", |outcome| {
+            detected.push(outcome);
+            let _guard = input
+                .try_lock()
+                .expect("input mutex should be released before detection callback");
+        })
+        .unwrap();
+
+        assert_eq!(detected, vec![Outcome::Q]);
     }
 
     #[test]
