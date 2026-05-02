@@ -18,7 +18,7 @@
 //! unchanged; later phases can use the same observations to route
 //! matching trigger bytes away from the child.
 
-use std::io::{self, Read};
+use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
 use super::{
@@ -66,38 +66,47 @@ pub fn shared_input_pump() -> SharedInputPump {
     Arc::new(Mutex::new(InputPump::new()))
 }
 
-/// Host-input [`Read`] adapter for Phase 3 detect-only wiring.
+/// Host-input [`Write`] adapter for Phase 3 detect-only wiring.
 ///
-/// The adapter preserves the byte stream exactly as read from the
-/// wrapped reader. It only mirrors accepted host-input bytes into
-/// the shared [`InputPump`] and emits an `info` diagnostic when a
-/// trigger literal is detected.
+/// The adapter preserves the byte stream exactly as accepted by the
+/// wrapped writer. It only mirrors accepted host-input bytes into the
+/// shared [`InputPump`] and emits an `info` diagnostic when a trigger
+/// literal is detected.
 #[derive(Debug)]
-pub struct InputDetector<R> {
-    inner: R,
+pub struct InputDetector<W> {
+    inner: W,
     input: SharedInputPump,
 }
 
-impl<R> InputDetector<R> {
-    pub fn new(inner: R, input: SharedInputPump) -> Self {
+impl<W> InputDetector<W> {
+    pub fn new(inner: W, input: SharedInputPump) -> Self {
         Self { inner, input }
+    }
+
+    #[cfg(test)]
+    fn inner(&self) -> &W {
+        &self.inner
     }
 }
 
-impl<R> Read for InputDetector<R>
+impl<W> Write for InputDetector<W>
 where
-    R: Read,
+    W: Write,
 {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let n = self.inner.read(buf)?;
-        if n > 0 {
-            if let Err(err) = observe_detected_input(&self.input, &buf[..n], |outcome| {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let written = self.inner.write(buf)?;
+        if written > 0 {
+            if let Err(err) = observe_detected_input(&self.input, &buf[..written], |outcome| {
                 tracing::info!(?outcome, "trigger detect-only: matched host input trigger");
             }) {
                 tracing::warn!(error = %err, "trigger detect-only observation failed");
             }
         }
-        Ok(n)
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
     }
 }
 
@@ -199,12 +208,52 @@ impl InputPump {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
 
     const BEGIN_PASTE: &[u8] = b"\x1b[200~";
     const END_PASTE: &[u8] = b"\x1b[201~";
     const ENTER_ALT: &[u8] = b"\x1b[?1049h";
     const LEAVE_ALT: &[u8] = b"\x1b[?1049l";
+
+    #[derive(Debug, Default)]
+    struct OneByteWriter {
+        bytes: Vec<u8>,
+    }
+
+    impl Write for OneByteWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if buf.is_empty() {
+                return Ok(0);
+            }
+            self.bytes.push(buf[0]);
+            Ok(1)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct BrokenPipeAfterOne {
+        bytes: Vec<u8>,
+    }
+
+    impl Write for BrokenPipeAfterOne {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if buf.is_empty() {
+                return Ok(0);
+            }
+            if self.bytes.is_empty() {
+                self.bytes.push(buf[0]);
+                return Ok(1);
+            }
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     fn outcomes_for_input(pump: &mut InputPump, bytes: &[u8]) -> Vec<Outcome> {
         bytes
@@ -242,24 +291,21 @@ mod tests {
     #[test]
     fn input_detector_forwards_bytes_unchanged() {
         let input = shared_input_pump();
-        let mut detector = InputDetector::new(Cursor::new(b":q\n".to_vec()), input);
-        let mut out = Vec::new();
+        let mut detector = InputDetector::new(Vec::new(), input);
 
-        detector.read_to_end(&mut out).unwrap();
+        detector.write_all(b":q\n").unwrap();
 
-        assert_eq!(out, b":q\n");
+        assert_eq!(detector.inner().as_slice(), b":q\n");
     }
 
     #[test]
-    fn input_detector_preserves_cross_read_state() {
+    fn input_detector_preserves_cross_write_state() {
         let input = shared_input_pump();
-        let mut detector = InputDetector::new(Cursor::new(b":q\n".to_vec()), input.clone());
-        let mut byte = [0u8; 1];
+        let mut detector = InputDetector::new(Vec::new(), input.clone());
 
-        assert_eq!(detector.read(&mut byte).unwrap(), 1);
-        assert_eq!(detector.read(&mut byte).unwrap(), 1);
-        assert_eq!(detector.read(&mut byte).unwrap(), 1);
-        assert_eq!(detector.read(&mut byte).unwrap(), 0);
+        assert_eq!(detector.write(b":").unwrap(), 1);
+        assert_eq!(detector.write(b"q").unwrap(), 1);
+        assert_eq!(detector.write(b"\n").unwrap(), 1);
 
         assert_eq!(detect_for_test(&input, b":wq\n"), vec![Outcome::Wq]);
     }
@@ -267,13 +313,35 @@ mod tests {
     #[test]
     fn input_detector_observes_into_shared_pump() {
         let input = shared_input_pump();
-        let mut detector = InputDetector::new(Cursor::new(b":".to_vec()), input.clone());
-        let mut out = Vec::new();
+        let mut detector = InputDetector::new(Vec::new(), input.clone());
 
-        detector.read_to_end(&mut out).unwrap();
+        detector.write_all(b":").unwrap();
 
-        assert_eq!(out, b":");
+        assert_eq!(detector.inner().as_slice(), b":");
         assert_eq!(detect_for_test(&input, b"q\n"), vec![Outcome::Q]);
+    }
+
+    #[test]
+    fn input_detector_observes_only_accepted_write_prefix() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(OneByteWriter::default(), input.clone());
+
+        assert_eq!(detector.write(b":q").unwrap(), 1);
+
+        assert_eq!(detector.inner().bytes.as_slice(), b":");
+        assert_eq!(detect_for_test(&input, b"\n"), vec![]);
+    }
+
+    #[test]
+    fn input_detector_skips_broken_pipe_suffix() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(BrokenPipeAfterOne::default(), input.clone());
+
+        let err = detector.write_all(b":q").unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        assert_eq!(detector.inner().bytes.as_slice(), b":");
+        assert_eq!(detect_for_test(&input, b"\n"), vec![]);
     }
 
     #[test]
@@ -303,12 +371,11 @@ mod tests {
             }
         });
 
-        let mut detector = InputDetector::new(Cursor::new(b":q\n".to_vec()), input);
-        let mut out = Vec::new();
+        let mut detector = InputDetector::new(Vec::new(), input);
 
-        detector.read_to_end(&mut out).unwrap();
+        detector.write_all(b":q\n").unwrap();
 
-        assert_eq!(out, b":q\n");
+        assert_eq!(detector.inner().as_slice(), b":q\n");
     }
 
     #[test]

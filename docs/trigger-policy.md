@@ -32,8 +32,9 @@ through `InputPump::feed_child_output_byte` so alternate-screen state
 can disarm input parsing.
 
 `trigger::input::InputDetector` is the Phase 3 detect-only host-input
-adapter. It forwards bytes unchanged and emits `tracing::info!` only
-when `InputPump` reports a trigger outcome.
+adapter. It forwards host input unchanged to the child writer, feeds
+only the bytes accepted by that writer into the shared `InputPump`, and
+emits `tracing::info!` only when `InputPump` reports a trigger outcome.
 
 `trigger::output::OutputArbiter` is the canonical child-output
 adapter. It forwards child output unchanged and feeds the bytes that

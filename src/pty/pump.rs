@@ -54,7 +54,7 @@ where
     let pty_reader = session.master.try_clone_reader().map_err(Error::Pty)?;
     let pty_writer = session.master.take_writer().map_err(Error::Pty)?;
     let trigger_input = shared_input_pump();
-    let host_stdin = InputDetector::new(host_stdin, trigger_input.clone());
+    let pty_writer = InputDetector::new(pty_writer, trigger_input.clone());
     let host_stdout = OutputArbiter::new(host_stdout, trigger_input);
 
     let host_to_child = spawn_forwarder(Direction::HostToChild, host_stdin, pty_writer);
