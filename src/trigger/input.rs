@@ -18,6 +18,7 @@
 //! unchanged; later phases can use the same observations to route
 //! matching trigger bytes away from the child.
 
+use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
 use super::{
@@ -63,6 +64,76 @@ pub type SharedInputPump = Arc<Mutex<InputPump>>;
 
 pub fn shared_input_pump() -> SharedInputPump {
     Arc::new(Mutex::new(InputPump::new()))
+}
+
+/// Host-input [`Write`] adapter for Phase 3 detect-only wiring.
+///
+/// The adapter preserves the byte stream exactly as accepted by the
+/// wrapped writer. It only mirrors accepted host-input bytes into the
+/// shared [`InputPump`] and emits an `info` diagnostic when a trigger
+/// literal is detected.
+#[derive(Debug)]
+pub struct InputDetector<W> {
+    inner: W,
+    input: SharedInputPump,
+}
+
+impl<W> InputDetector<W> {
+    pub fn new(inner: W, input: SharedInputPump) -> Self {
+        Self { inner, input }
+    }
+
+    #[cfg(test)]
+    fn inner(&self) -> &W {
+        &self.inner
+    }
+}
+
+impl<W> Write for InputDetector<W>
+where
+    W: Write,
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let written = self.inner.write(buf)?;
+        if written > 0 {
+            if let Err(err) = observe_detected_input(&self.input, &buf[..written], |outcome| {
+                tracing::info!(?outcome, "trigger detect-only: matched host input trigger");
+            }) {
+                tracing::warn!(error = %err, "trigger detect-only observation failed");
+            }
+        }
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+fn observe_detected_input<F>(
+    input: &SharedInputPump,
+    bytes: &[u8],
+    mut on_detect: F,
+) -> io::Result<()>
+where
+    F: FnMut(Outcome),
+{
+    let mut detected = Vec::new();
+    let mut input = input.lock().map_err(|_| {
+        io::Error::other("trigger input pump mutex poisoned while observing host input")
+    })?;
+    for &b in bytes {
+        let outcome = input.feed_input_byte(b).outcome();
+        if outcome != Outcome::None {
+            detected.push(outcome);
+        }
+    }
+    drop(input);
+
+    for outcome in detected {
+        on_detect(outcome);
+    }
+    Ok(())
 }
 
 /// Pure state machine for input-side trigger detection.
@@ -143,12 +214,168 @@ mod tests {
     const ENTER_ALT: &[u8] = b"\x1b[?1049h";
     const LEAVE_ALT: &[u8] = b"\x1b[?1049l";
 
+    #[derive(Debug, Default)]
+    struct OneByteWriter {
+        bytes: Vec<u8>,
+    }
+
+    impl Write for OneByteWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if buf.is_empty() {
+                return Ok(0);
+            }
+            self.bytes.push(buf[0]);
+            Ok(1)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct BrokenPipeAfterOne {
+        bytes: Vec<u8>,
+    }
+
+    impl Write for BrokenPipeAfterOne {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if buf.is_empty() {
+                return Ok(0);
+            }
+            if self.bytes.is_empty() {
+                self.bytes.push(buf[0]);
+                return Ok(1);
+            }
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
     fn outcomes_for_input(pump: &mut InputPump, bytes: &[u8]) -> Vec<Outcome> {
         bytes
             .iter()
             .map(|&b| pump.feed_input_byte(b).outcome())
             .filter(|&outcome| outcome != Outcome::None)
             .collect()
+    }
+
+    fn detect_for_test(input: &SharedInputPump, bytes: &[u8]) -> Vec<Outcome> {
+        let mut detected = Vec::new();
+        observe_detected_input(input, bytes, |outcome| detected.push(outcome)).unwrap();
+        detected
+    }
+
+    #[test]
+    fn detect_only_helper_reports_plain_trigger() {
+        let input = shared_input_pump();
+        let detected = detect_for_test(&input, b":wq\n");
+
+        assert_eq!(detected, vec![Outcome::Wq]);
+    }
+
+    #[test]
+    fn detect_only_helper_respects_alt_screen_state() {
+        let input = shared_input_pump();
+        input.lock().unwrap().feed_child_output_slice(ENTER_ALT);
+
+        assert_eq!(detect_for_test(&input, b":q\n"), vec![]);
+
+        input.lock().unwrap().feed_child_output_slice(LEAVE_ALT);
+        assert_eq!(detect_for_test(&input, b":q!\n"), vec![Outcome::QBang]);
+    }
+
+    #[test]
+    fn input_detector_forwards_bytes_unchanged() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(Vec::new(), input);
+
+        detector.write_all(b":q\n").unwrap();
+
+        assert_eq!(detector.inner().as_slice(), b":q\n");
+    }
+
+    #[test]
+    fn input_detector_preserves_cross_write_state() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(Vec::new(), input.clone());
+
+        assert_eq!(detector.write(b":").unwrap(), 1);
+        assert_eq!(detector.write(b"q").unwrap(), 1);
+        assert_eq!(detector.write(b"\n").unwrap(), 1);
+
+        assert_eq!(detect_for_test(&input, b":wq\n"), vec![Outcome::Wq]);
+    }
+
+    #[test]
+    fn input_detector_observes_into_shared_pump() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(Vec::new(), input.clone());
+
+        detector.write_all(b":").unwrap();
+
+        assert_eq!(detector.inner().as_slice(), b":");
+        assert_eq!(detect_for_test(&input, b"q\n"), vec![Outcome::Q]);
+    }
+
+    #[test]
+    fn input_detector_observes_only_accepted_write_prefix() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(OneByteWriter::default(), input.clone());
+
+        assert_eq!(detector.write(b":q").unwrap(), 1);
+
+        assert_eq!(detector.inner().bytes.as_slice(), b":");
+        assert_eq!(detect_for_test(&input, b"\n"), vec![]);
+    }
+
+    #[test]
+    fn input_detector_skips_broken_pipe_suffix() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(BrokenPipeAfterOne::default(), input.clone());
+
+        let err = detector.write_all(b":q").unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+        assert_eq!(detector.inner().bytes.as_slice(), b":");
+        assert_eq!(detect_for_test(&input, b"\n"), vec![]);
+    }
+
+    #[test]
+    fn observe_detected_input_releases_lock_before_callback() {
+        let input = shared_input_pump();
+        let mut detected = Vec::new();
+
+        observe_detected_input(&input, b":q\n", |outcome| {
+            detected.push(outcome);
+            let _guard = input
+                .try_lock()
+                .expect("input mutex should be released before detection callback");
+        })
+        .unwrap();
+
+        assert_eq!(detected, vec![Outcome::Q]);
+    }
+
+    #[test]
+    fn input_detector_keeps_forwarding_when_observer_fails() {
+        let input = shared_input_pump();
+        let _ = std::panic::catch_unwind({
+            let input = input.clone();
+            move || {
+                let _guard = input.lock().unwrap();
+                panic!("poison trigger input mutex for test");
+            }
+        });
+
+        let mut detector = InputDetector::new(Vec::new(), input);
+
+        detector.write_all(b":q\n").unwrap();
+
+        assert_eq!(detector.inner().as_slice(), b":q\n");
     }
 
     #[test]
