@@ -255,12 +255,39 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Clone, Copy)]
+    enum PumpStep {
+        Host(&'static [u8]),
+        Child(&'static [u8]),
+    }
+
+    struct PumpCase {
+        name: &'static str,
+        steps: &'static [PumpStep],
+        expected_outcomes: &'static [Outcome],
+        final_in_paste: bool,
+        final_alt_screen: bool,
+    }
+
     fn outcomes_for_input(pump: &mut InputPump, bytes: &[u8]) -> Vec<Outcome> {
         bytes
             .iter()
             .map(|&b| pump.feed_input_byte(b).outcome())
             .filter(|&outcome| outcome != Outcome::None)
             .collect()
+    }
+
+    fn outcomes_for_steps(pump: &mut InputPump, steps: &[PumpStep]) -> Vec<Outcome> {
+        let mut outcomes = Vec::new();
+        for step in steps {
+            match step {
+                PumpStep::Host(bytes) => outcomes.extend(outcomes_for_input(pump, bytes)),
+                PumpStep::Child(bytes) => {
+                    pump.feed_child_output_slice(bytes);
+                }
+            }
+        }
+        outcomes
     }
 
     fn detect_for_test(input: &SharedInputPump, bytes: &[u8]) -> Vec<Outcome> {
@@ -384,6 +411,55 @@ mod tests {
         assert_eq!(outcomes_for_input(&mut pump, b":q\n"), vec![Outcome::Q]);
         assert!(!pump.in_paste());
         assert!(!pump.is_alt_screen());
+    }
+
+    #[test]
+    fn pump_input_modes_follow_table() {
+        let cases = [
+            PumpCase {
+                name: "normal prompt input arms all quit literals",
+                steps: &[PumpStep::Host(b":q\n:wq\n:q!\n")],
+                expected_outcomes: &[Outcome::Q, Outcome::Wq, Outcome::QBang],
+                final_in_paste: false,
+                final_alt_screen: false,
+            },
+            PumpCase {
+                name: "bracketed paste bypasses triggers then rearms",
+                steps: &[
+                    PumpStep::Host(BEGIN_PASTE),
+                    PumpStep::Host(b":q\n:wq\n:q!\n"),
+                    PumpStep::Host(END_PASTE),
+                    PumpStep::Host(b":wq\n"),
+                ],
+                expected_outcomes: &[Outcome::Wq],
+                final_in_paste: false,
+                final_alt_screen: false,
+            },
+            PumpCase {
+                name: "alternate screen bypasses triggers then rearms",
+                steps: &[
+                    PumpStep::Child(ENTER_ALT),
+                    PumpStep::Host(b":q\n:wq\n:q!\n"),
+                    PumpStep::Child(LEAVE_ALT),
+                    PumpStep::Host(b":q!\n"),
+                ],
+                expected_outcomes: &[Outcome::QBang],
+                final_in_paste: false,
+                final_alt_screen: false,
+            },
+        ];
+
+        for case in cases {
+            let mut pump = InputPump::new();
+            assert_eq!(
+                outcomes_for_steps(&mut pump, case.steps),
+                case.expected_outcomes,
+                "{}",
+                case.name
+            );
+            assert_eq!(pump.in_paste(), case.final_in_paste, "{}", case.name);
+            assert_eq!(pump.is_alt_screen(), case.final_alt_screen, "{}", case.name);
+        }
     }
 
     #[test]
