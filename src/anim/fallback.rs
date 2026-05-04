@@ -9,9 +9,9 @@
 //! based on the active [`crate::term::width::WidthBucket`].
 //!
 //! The gag strings are intentionally kept short enough to fit
-//! comfortably below 40 columns (the widest is 33 chars), so
-//! even the 30-column fallback bucket renders them on a single
-//! line without terminal-driven wrapping.
+//! in a single line when the terminal is at least 33 columns wide
+//! (the widest gag is 33 chars). Terminals narrower than 33
+//! columns receive a best-effort output that may wrap.
 //!
 //! Pure ASCII, single line, no trailing terminator: callers
 //! append their own line-end so this layer stays stylistic-only.
@@ -38,8 +38,8 @@ pub enum Trigger {
 /// Single-line plain-text gag emitted at `cols < 40`.
 ///
 /// The returned string is `'static`, pure ASCII, and contains no
-/// `\n`. Width is held under 34 columns so the gag fits even at
-/// the narrow end of the fallback bucket; this is verified by
+/// `\n`. Width is held under 34 columns so the gag fits in a
+/// 33-column terminal; this is verified by
 /// `gags_fit_under_thirty_four_columns` below.
 ///
 /// The `[QQ]` prefix mirrors the compact ambulance header used
@@ -106,10 +106,11 @@ mod tests {
         }
     }
 
-    /// All gags fit in a 33-column terminal so even the narrow
-    /// end of the fallback bucket renders them without wrapping.
-    /// Hard cap chosen to be at least one column above the longest
-    /// current gag, so accidental drift gets caught by this test.
+    /// All gags fit in a 33-column terminal so terminals in the
+    /// 33–39 column range of the fallback bucket render them
+    /// without wrapping. The hard cap equals the longest current
+    /// gag (33 cols); any addition that makes a gag wider fails
+    /// this test immediately.
     #[test]
     fn gags_fit_under_thirty_four_columns() {
         const LIMIT: usize = 33;
