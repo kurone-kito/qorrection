@@ -84,6 +84,7 @@ impl SirenPhase {
 /// newline; the row count always equals `car::lines(car_asset)
 /// .len()`.
 pub fn frame(car_asset: &str, x_offset: i32, phase: SirenPhase) -> String {
+    debug_assert!(car_asset.is_ascii(), "frame() requires ASCII car_asset");
     let lines = car::lines(car_asset);
     let last_idx = lines.len().saturating_sub(1);
     let trail_width = x_offset.max(0) as usize;
