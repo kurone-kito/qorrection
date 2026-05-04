@@ -7,4 +7,5 @@
 //! renderer follow in subsequent commits.
 
 pub mod car;
+pub mod fallback;
 pub mod frame;
