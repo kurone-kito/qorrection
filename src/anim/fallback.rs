@@ -18,20 +18,27 @@
 
 /// A fired quit trigger that the input pump observed.
 ///
-/// Mirrors [`crate::trigger::parser::Outcome`] minus the `None`
-/// variant: the fallback gag is only meaningful once a trigger
-/// has actually fired, so we model "no gag" with the absence of
-/// a `Trigger` value rather than a fourth variant. The renderer
-/// is responsible for translating an [`crate::trigger::parser::
-/// Outcome`] into an `Option<Trigger>` before calling
-/// [`fallback`].
+/// Corresponds to [`crate::trigger::parser::Outcome`] minus the
+/// `None` variant: the fallback gag is only meaningful once a
+/// trigger has actually fired, so we model "no gag" with the
+/// absence of a `Trigger` value rather than a fourth variant. The
+/// renderer is responsible for translating an
+/// [`crate::trigger::parser::Outcome`] into an `Option<Trigger>`
+/// before calling [`fallback`].
+///
+/// Note: variant names follow `Outcome` except that
+/// `Outcome::QBang` maps to [`Trigger::Bang`] to avoid the
+/// redundant `Q` prefix inside this enum's namespace.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trigger {
     /// `:q` -- standard ambulance gag.
     Q,
     /// `:wq` -- ambulance carrying the spec-locked 418 label.
     Wq,
-    /// `:q!` -- nine-car parade gag.
+    /// `:q!` — nine-car parade gag.
+    ///
+    /// Maps from [`crate::trigger::parser::Outcome::QBang`]; the
+    /// shorter name avoids redundancy with the enum prefix.
     Bang,
 }
 
