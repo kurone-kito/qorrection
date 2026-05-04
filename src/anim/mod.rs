@@ -1,10 +1,10 @@
 //! Animation primitives.
 //!
-//! Phase C landed the static asset layer ([`car`]); Phase F
-//! incrementally adds the pure-function pieces that scenes will
-//! orchestrate. So far this comprises the per-frame composer
-//! ([`frame`]); the dumb-TTY fallback and crossterm-driven
-//! renderer follow in subsequent commits.
+//! Phase C landed the static asset layer ([`car`]); Phase F adds
+//! the pure-function pieces that scenes will orchestrate. This
+//! includes the per-frame composer ([`frame`]) and the dumb-TTY
+//! fallback ([`fallback`]); the crossterm-driven renderer follows
+//! in a subsequent commit.
 
 pub mod car;
 pub mod fallback;
