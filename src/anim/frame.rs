@@ -236,7 +236,7 @@ mod tests {
 
     /// A clip wider than the longest car row produces all-empty
     /// rows, but the row count is still preserved so animation
-    /// timelines do not desync.
+    /// timelines do not fall out of sync.
     #[test]
     fn frame_negative_offset_beyond_line_length_emits_empty() {
         let out = frame(car::TINY, -100, SirenPhase::Fi);
