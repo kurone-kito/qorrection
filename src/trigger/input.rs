@@ -76,11 +76,16 @@ pub fn shared_input_pump() -> SharedInputPump {
 pub struct InputDetector<W> {
     inner: W,
     input: SharedInputPump,
+    poison_warned: bool,
 }
 
 impl<W> InputDetector<W> {
     pub fn new(inner: W, input: SharedInputPump) -> Self {
-        Self { inner, input }
+        Self {
+            inner,
+            input,
+            poison_warned: false,
+        }
     }
 
     #[cfg(test)]
@@ -96,9 +101,14 @@ where
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let written = self.inner.write(buf)?;
         if written > 0 {
-            if let Err(err) = observe_detected_input(&self.input, &buf[..written], |outcome| {
-                tracing::info!(?outcome, "trigger detect-only: matched host input trigger");
-            }) {
+            if let Err(err) = observe_detected_input(
+                &self.input,
+                &buf[..written],
+                &mut self.poison_warned,
+                |outcome| {
+                    tracing::info!(?outcome, "trigger detect-only: matched host input trigger");
+                },
+            ) {
                 tracing::warn!(error = %err, "trigger detect-only observation failed");
             }
         }
@@ -113,15 +123,29 @@ where
 fn observe_detected_input<F>(
     input: &SharedInputPump,
     bytes: &[u8],
+    warned: &mut bool,
     mut on_detect: F,
 ) -> io::Result<()>
 where
     F: FnMut(Outcome),
 {
     let mut detected = Vec::new();
-    let mut input = input.lock().map_err(|_| {
-        io::Error::other("trigger input pump mutex poisoned while observing host input")
-    })?;
+    let mut input = match input.lock() {
+        Ok(guard) => guard,
+        Err(err) => {
+            // The mutex was poisoned by a panic in another thread.  Recover
+            // the inner value so trigger detection continues; the poisoned
+            // state remains but does not affect correctness of the pump itself.
+            if !*warned {
+                tracing::warn!(
+                    error = %err,
+                    "trigger input pump mutex was poisoned; recovering guard to continue observation"
+                );
+                *warned = true;
+            }
+            err.into_inner()
+        }
+    };
     for &b in bytes {
         let outcome = input.feed_input_byte(b).outcome();
         if outcome != Outcome::None {
@@ -292,7 +316,9 @@ mod tests {
 
     fn detect_for_test(input: &SharedInputPump, bytes: &[u8]) -> Vec<Outcome> {
         let mut detected = Vec::new();
-        observe_detected_input(input, bytes, |outcome| detected.push(outcome)).unwrap();
+        let mut warned = false;
+        observe_detected_input(input, bytes, &mut warned, |outcome| detected.push(outcome))
+            .unwrap();
         detected
     }
 
@@ -375,8 +401,9 @@ mod tests {
     fn observe_detected_input_releases_lock_before_callback() {
         let input = shared_input_pump();
         let mut detected = Vec::new();
+        let mut warned = false;
 
-        observe_detected_input(&input, b":q\n", |outcome| {
+        observe_detected_input(&input, b":q\n", &mut warned, |outcome| {
             detected.push(outcome);
             let _guard = input
                 .try_lock()
@@ -388,21 +415,63 @@ mod tests {
     }
 
     #[test]
-    fn input_detector_keeps_forwarding_when_observer_fails() {
+    fn input_detector_keeps_forwarding_when_mutex_is_poisoned() {
         let input = shared_input_pump();
-        let _ = std::panic::catch_unwind({
-            let input = input.clone();
-            move || {
-                let _guard = input.lock().unwrap();
-                panic!("poison trigger input mutex for test");
-            }
-        });
+        assert!(
+            std::panic::catch_unwind({
+                let input = input.clone();
+                move || {
+                    let _guard = input.lock().unwrap();
+                    panic!("poison trigger input mutex for test");
+                }
+            })
+            .is_err(),
+            "catch_unwind must return Err to confirm the mutex was poisoned"
+        );
+        assert!(
+            input.lock().is_err(),
+            "mutex must be poisoned for the test to be meaningful"
+        );
 
         let mut detector = InputDetector::new(Vec::new(), input);
 
         detector.write_all(b":q\n").unwrap();
 
         assert_eq!(detector.inner().as_slice(), b":q\n");
+    }
+
+    #[test]
+    fn observation_continues_after_mutex_is_poisoned() {
+        let input = shared_input_pump();
+        assert!(
+            std::panic::catch_unwind({
+                let input = input.clone();
+                move || {
+                    let _guard = input.lock().unwrap();
+                    panic!("poison the mutex");
+                }
+            })
+            .is_err(),
+            "catch_unwind must return Err to confirm the mutex was poisoned"
+        );
+        assert!(
+            input.lock().is_err(),
+            "mutex must be poisoned for the test to be meaningful"
+        );
+
+        let mut outcomes = Vec::new();
+        let mut warned = false;
+        observe_detected_input(&input, b":q\n", &mut warned, |outcome| {
+            outcomes.push(outcome);
+        })
+        .unwrap();
+
+        assert_eq!(
+            outcomes,
+            vec![Outcome::Q],
+            "trigger detection must survive mutex poison recovery"
+        );
+        assert!(warned, "poison_warned must be set after first recovery");
     }
 
     #[test]

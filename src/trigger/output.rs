@@ -15,22 +15,52 @@ use std::io::{self, Write};
 
 use super::input::SharedInputPump;
 
+fn observe_child_output(input: &SharedInputPump, bytes: &[u8], warned: &mut bool) {
+    let mut guard = match input.lock() {
+        Ok(guard) => guard,
+        Err(err) => {
+            // The mutex was poisoned by a panic in another thread.  Recover
+            // the inner value so observation continues; the poisoned state
+            // remains but does not affect correctness of the pump itself.
+            if !*warned {
+                tracing::warn!(
+                    error = %err,
+                    "trigger output arbiter mutex was poisoned; recovering guard to continue observation"
+                );
+                *warned = true;
+            }
+            err.into_inner()
+        }
+    };
+    guard.feed_child_output_slice(bytes);
+}
+
 /// Child-output [`Write`] adapter that updates trigger state while
 /// preserving byte-for-byte passthrough.
 #[derive(Debug)]
 pub struct OutputArbiter<W> {
     inner: W,
     input: SharedInputPump,
+    poison_warned: bool,
 }
 
 impl<W> OutputArbiter<W> {
     pub fn new(inner: W, input: SharedInputPump) -> Self {
-        Self { inner, input }
+        Self {
+            inner,
+            input,
+            poison_warned: false,
+        }
     }
 
     #[cfg(test)]
     fn inner(&self) -> &W {
         &self.inner
+    }
+
+    #[cfg(test)]
+    fn poison_warned(&self) -> bool {
+        self.poison_warned
     }
 }
 
@@ -41,10 +71,7 @@ where
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let written = self.inner.write(buf)?;
         if written > 0 {
-            let mut input = self.input.lock().map_err(|_| {
-                io::Error::other("trigger input pump mutex poisoned while observing child output")
-            })?;
-            input.feed_child_output_slice(&buf[..written]);
+            observe_child_output(&self.input, &buf[..written], &mut self.poison_warned);
         }
         Ok(written)
     }
@@ -91,6 +118,70 @@ mod tests {
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn write_succeeds_when_mutex_is_poisoned() {
+        let input = shared_input_pump();
+        assert!(
+            std::panic::catch_unwind({
+                let input = input.clone();
+                move || {
+                    let _guard = input.lock().unwrap();
+                    panic!("poison trigger input mutex for test");
+                }
+            })
+            .is_err(),
+            "catch_unwind must return Err to confirm the mutex was poisoned"
+        );
+        assert!(
+            input.lock().is_err(),
+            "mutex must be poisoned for the test to be meaningful"
+        );
+
+        let mut arbiter = OutputArbiter::new(Vec::new(), input.clone());
+        arbiter.write_all(b"hello").unwrap();
+        assert_eq!(arbiter.inner(), b"hello");
+        assert!(
+            arbiter.poison_warned(),
+            "poison_warned must be set after first recovery"
+        );
+        // A second write must still succeed without re-logging.
+        arbiter.write_all(b" world").unwrap();
+        assert_eq!(arbiter.inner(), b"hello world");
+    }
+
+    #[test]
+    fn observation_continues_after_mutex_is_poisoned() {
+        let input = shared_input_pump();
+        assert!(
+            std::panic::catch_unwind({
+                let input = input.clone();
+                move || {
+                    let _guard = input.lock().unwrap();
+                    panic!("poison the mutex");
+                }
+            })
+            .is_err(),
+            "catch_unwind must return Err to confirm the mutex was poisoned"
+        );
+        assert!(
+            input.lock().is_err(),
+            "mutex must be poisoned for the test to be meaningful"
+        );
+
+        let mut arbiter = OutputArbiter::new(Vec::new(), input.clone());
+        arbiter.write_all(ENTER_ALT).unwrap();
+
+        // into_inner() recovery must keep alt-screen state up to date.
+        let is_alt = input
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_alt_screen();
+        assert!(
+            is_alt,
+            "alt-screen observation must survive mutex poison recovery"
+        );
     }
 
     #[test]
