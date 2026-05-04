@@ -300,12 +300,12 @@ mod tests {
     }
 
     /// The empty asset edge-case: `lines.len()` is 1 (an empty
-    /// string splits into one empty line). `frame` must not panic
-    /// and must emit one empty row.
+    /// string splits into one empty line). `frame` must not panic;
+    /// with `x=5` the wheel row is empty so the output is the
+    /// 5-character siren trail `"Fi-Fo"` with no car body.
     #[test]
     fn frame_empty_asset_does_not_panic() {
         let out = frame("", 5, SirenPhase::Fi);
-        // Empty asset → one empty wheel row → trail-only output.
         assert_eq!(out, "Fi-Fo");
     }
 
