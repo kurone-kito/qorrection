@@ -274,6 +274,30 @@ mod tests {
         }
     }
 
+    /// When the last row is fully clipped the preceding `\n`
+    /// separator becomes the last byte — the "no trailing newline"
+    /// guarantee only applies when the final row is non-empty.
+    ///
+    /// Uses a synthetic short-last-row asset so the clip is
+    /// unambiguous: x=-3 clips the 2-char last row completely
+    /// while leaving content on the first two rows.
+    #[test]
+    fn frame_last_row_clipped_ends_with_newline() {
+        // 3-row asset where the last row (2 chars) is shorter than
+        // the first two (5 chars each).  car::lines strips the
+        // trailing \n before splitting.
+        let asset = "AAAAA\nBBBBB\nCC\n";
+        let out = frame(asset, -3, SirenPhase::Fi);
+        // x=-3 clips 3 chars: rows 0 and 1 ("AAAAA","BBBBB") each
+        // yield 2 visible chars; row 2 ("CC") is fully clipped.
+        // Expected: "AA\nBB\n" (the last \n is the row-1 separator,
+        // not a new terminator).
+        assert_eq!(
+            out, "AA\nBB\n",
+            "expected visible rows + trailing separator; got {out:?}",
+        );
+    }
+
     /// Output is always pure ASCII (the assets are ASCII and the
     /// trail uses only `F i o -`), so width math stays honest.
     #[test]
