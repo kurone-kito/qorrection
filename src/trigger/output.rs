@@ -15,6 +15,20 @@ use std::io::{self, Write};
 
 use super::input::SharedInputPump;
 
+fn observe_child_output(input: &SharedInputPump, bytes: &[u8]) {
+    match input.lock() {
+        Ok(mut guard) => {
+            guard.feed_child_output_slice(bytes);
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "trigger output arbiter observation failed; alt-screen state not updated"
+            );
+        }
+    }
+}
+
 /// Child-output [`Write`] adapter that updates trigger state while
 /// preserving byte-for-byte passthrough.
 #[derive(Debug)]
@@ -41,10 +55,7 @@ where
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let written = self.inner.write(buf)?;
         if written > 0 {
-            let mut input = self.input.lock().map_err(|_| {
-                io::Error::other("trigger input pump mutex poisoned while observing child output")
-            })?;
-            input.feed_child_output_slice(&buf[..written]);
+            observe_child_output(&self.input, &buf[..written]);
         }
         Ok(written)
     }
@@ -91,6 +102,22 @@ mod tests {
         fn flush(&mut self) -> io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn write_succeeds_when_mutex_is_poisoned() {
+        let input = shared_input_pump();
+        let _ = std::panic::catch_unwind({
+            let input = input.clone();
+            move || {
+                let _guard = input.lock().unwrap();
+                panic!("poison trigger input mutex for test");
+            }
+        });
+
+        let mut arbiter = OutputArbiter::new(Vec::new(), input.clone());
+        arbiter.write_all(b"hello").unwrap();
+        assert_eq!(arbiter.inner(), b"hello");
     }
 
     #[test]
