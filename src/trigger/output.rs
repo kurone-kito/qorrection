@@ -110,17 +110,58 @@ mod tests {
     #[test]
     fn write_succeeds_when_mutex_is_poisoned() {
         let input = shared_input_pump();
-        let _ = std::panic::catch_unwind({
-            let input = input.clone();
-            move || {
-                let _guard = input.lock().unwrap();
-                panic!("poison trigger input mutex for test");
-            }
-        });
+        assert!(
+            std::panic::catch_unwind({
+                let input = input.clone();
+                move || {
+                    let _guard = input.lock().unwrap();
+                    panic!("poison trigger input mutex for test");
+                }
+            })
+            .is_err(),
+            "catch_unwind must return Err to confirm the mutex was poisoned"
+        );
+        assert!(
+            input.lock().is_err(),
+            "mutex must be poisoned for the test to be meaningful"
+        );
 
         let mut arbiter = OutputArbiter::new(Vec::new(), input.clone());
         arbiter.write_all(b"hello").unwrap();
         assert_eq!(arbiter.inner(), b"hello");
+    }
+
+    #[test]
+    fn observation_continues_after_mutex_is_poisoned() {
+        let input = shared_input_pump();
+        assert!(
+            std::panic::catch_unwind({
+                let input = input.clone();
+                move || {
+                    let _guard = input.lock().unwrap();
+                    panic!("poison the mutex");
+                }
+            })
+            .is_err(),
+            "catch_unwind must return Err to confirm the mutex was poisoned"
+        );
+        assert!(
+            input.lock().is_err(),
+            "mutex must be poisoned for the test to be meaningful"
+        );
+
+        let mut arbiter = OutputArbiter::new(Vec::new(), input.clone());
+        arbiter.write_all(ENTER_ALT).unwrap();
+
+        // into_inner() recovery must keep alt-screen state up to date.
+        let is_alt = input
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_alt_screen();
+        assert!(
+            is_alt,
+            "alt-screen observation must survive mutex poison recovery"
+        );
     }
 
     #[test]
