@@ -16,17 +16,20 @@ use std::io::{self, Write};
 use super::input::SharedInputPump;
 
 fn observe_child_output(input: &SharedInputPump, bytes: &[u8]) {
-    match input.lock() {
-        Ok(mut guard) => {
-            guard.feed_child_output_slice(bytes);
-        }
+    let mut guard = match input.lock() {
+        Ok(guard) => guard,
         Err(err) => {
+            // The mutex was poisoned by a panic in another thread.  Recover
+            // the inner value so observation continues; the poisoned state
+            // remains but does not affect correctness of the pump itself.
             tracing::warn!(
                 error = %err,
-                "trigger output arbiter observation failed; alt-screen state not updated"
+                "trigger output arbiter mutex was poisoned; recovering guard to continue observation"
             );
+            err.into_inner()
         }
-    }
+    };
+    guard.feed_child_output_slice(bytes);
 }
 
 /// Child-output [`Write`] adapter that updates trigger state while
