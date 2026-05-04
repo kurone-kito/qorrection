@@ -99,9 +99,9 @@ pub fn frame(car_asset: &str, x_offset: i32, phase: SirenPhase) -> String {
             }
             out.push_str(line);
         } else {
-            let drop = (-x_offset) as usize;
-            if drop < line.len() {
-                out.push_str(&line[drop..]);
+            let drop = x_offset.unsigned_abs() as usize;
+            if let Some(tail) = line.get(drop..) {
+                out.push_str(tail);
             }
         }
         if i < last_idx {
@@ -219,6 +219,19 @@ mod tests {
             assert_eq!(*l, expected, "row {i} clipped wrong");
         }
         assert!(!out.contains("Fi") && !out.contains("Fo"));
+    }
+
+    /// `x_offset == i32::MIN` must not overflow (negating i32::MIN
+    /// panics in debug and wraps in release). All rows are clipped
+    /// to empty, and the row count is preserved.
+    #[test]
+    fn frame_i32_min_does_not_panic() {
+        let out = frame(car::TINY, i32::MIN, SirenPhase::Fi);
+        let lines: Vec<&str> = out.split('\n').collect();
+        assert_eq!(lines.len(), car::lines(car::TINY).len());
+        for l in lines {
+            assert!(l.is_empty(), "row not empty: {l:?}");
+        }
     }
 
     /// A clip wider than the longest car row produces all-empty
