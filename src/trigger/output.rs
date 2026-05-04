@@ -15,17 +15,20 @@ use std::io::{self, Write};
 
 use super::input::SharedInputPump;
 
-fn observe_child_output(input: &SharedInputPump, bytes: &[u8]) {
+fn observe_child_output(input: &SharedInputPump, bytes: &[u8], warned: &mut bool) {
     let mut guard = match input.lock() {
         Ok(guard) => guard,
         Err(err) => {
             // The mutex was poisoned by a panic in another thread.  Recover
             // the inner value so observation continues; the poisoned state
             // remains but does not affect correctness of the pump itself.
-            tracing::warn!(
-                error = %err,
-                "trigger output arbiter mutex was poisoned; recovering guard to continue observation"
-            );
+            if !*warned {
+                tracing::warn!(
+                    error = %err,
+                    "trigger output arbiter mutex was poisoned; recovering guard to continue observation"
+                );
+                *warned = true;
+            }
             err.into_inner()
         }
     };
@@ -38,16 +41,26 @@ fn observe_child_output(input: &SharedInputPump, bytes: &[u8]) {
 pub struct OutputArbiter<W> {
     inner: W,
     input: SharedInputPump,
+    poison_warned: bool,
 }
 
 impl<W> OutputArbiter<W> {
     pub fn new(inner: W, input: SharedInputPump) -> Self {
-        Self { inner, input }
+        Self {
+            inner,
+            input,
+            poison_warned: false,
+        }
     }
 
     #[cfg(test)]
     fn inner(&self) -> &W {
         &self.inner
+    }
+
+    #[cfg(test)]
+    fn poison_warned(&self) -> bool {
+        self.poison_warned
     }
 }
 
@@ -58,7 +71,7 @@ where
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let written = self.inner.write(buf)?;
         if written > 0 {
-            observe_child_output(&self.input, &buf[..written]);
+            observe_child_output(&self.input, &buf[..written], &mut self.poison_warned);
         }
         Ok(written)
     }
@@ -129,6 +142,13 @@ mod tests {
         let mut arbiter = OutputArbiter::new(Vec::new(), input.clone());
         arbiter.write_all(b"hello").unwrap();
         assert_eq!(arbiter.inner(), b"hello");
+        assert!(
+            arbiter.poison_warned(),
+            "poison_warned must be set after first recovery"
+        );
+        // A second write must still succeed without re-logging.
+        arbiter.write_all(b" world").unwrap();
+        assert_eq!(arbiter.inner(), b"hello world");
     }
 
     #[test]
