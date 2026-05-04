@@ -3,9 +3,10 @@
 //! Composes a single rendered frame from three inputs: a car
 //! ASCII asset (one of the variants in [`crate::anim::car`]), the
 //! car's horizontal position, and the current siren phase. The
-//! output is a multi-line `String` with no trailing newline so
-//! callers can append cursor or clear sequences without an extra
-//! blank row.
+//! output is a multi-line `String` that joins rendered rows with
+//! `\n`. When the last rendered row is non-empty the string has
+//! no trailing newline; when the last row is empty after clipping
+//! the preceding `\n` separator becomes the final byte.
 //!
 //! The function is intentionally oblivious to terminal width,
 //! scene type, and animation timing: scene orchestrators (Phase
@@ -59,9 +60,9 @@ impl SirenPhase {
 /// Render a single animation frame.
 ///
 /// `car_asset` is the multi-line ASCII art (typically
-/// [`car::TINY`], [`car::STD`], or [`car::BIG`]). The function
-/// does not validate the asset's identity — it only consumes
-/// lines via [`car::lines`].
+/// [`car::TINY`], [`car::STD`], or [`car::BIG`]) and must be
+/// pure ASCII (`debug_assert!`-enforced in debug builds); the
+/// function does not otherwise validate the asset's identity.
 ///
 /// `x_offset` is the column of the car's leftmost edge:
 ///
@@ -80,9 +81,12 @@ impl SirenPhase {
 /// `phase` selects which syllable leads the siren trail when one
 /// is drawn. See [`SirenPhase`].
 ///
-/// The returned string joins rows with `\n` and has no trailing
-/// newline; the row count always equals `car::lines(car_asset)
-/// .len()`.
+/// The returned string joins rendered rows with `\n`. When the
+/// final rendered row is non-empty the string has no trailing
+/// newline; when it is empty (e.g. a large negative `x_offset`
+/// clips the entire last row) the preceding `\n` separator is the
+/// last byte. The row count always equals
+/// `car::lines(car_asset).len()`.
 pub fn frame(car_asset: &str, x_offset: i32, phase: SirenPhase) -> String {
     debug_assert!(car_asset.is_ascii(), "frame() requires ASCII car_asset");
     let lines = car::lines(car_asset);
