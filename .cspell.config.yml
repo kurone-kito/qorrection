@@ -54,6 +54,7 @@ words:
   - kyuukyuu
   - lossily
   - ollama
+  - pylint
   - qjunk
   - qorrection
   - qwen
@@ -65,4 +66,6 @@ words:
   - sigunused
   - swatinem
   - toctou
+  - unpushed
+  - unreplied
   - xclaude
