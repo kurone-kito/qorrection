@@ -99,3 +99,14 @@ The full, Copilot-first project guidance lives in
 When that file uses Copilot-specific workflow names, apply the intent
 in Gemini CLI using its own interaction model rather than following
 the product terms literally.
+
+## IDD Workflow
+
+This project uses Issue-Driven Development (IDD) with parallel AI
+agents. Start with [docs/idd-workflow.md](docs/idd-workflow.md) for
+the cross-agent entry path and phase routing.
+
+Before starting IDD work, open
+`.github/instructions/idd-overview.instructions.md`. Open the routed
+phase file manually when the current step changes.
+

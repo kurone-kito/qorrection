@@ -318,3 +318,13 @@ and CI as project-specific. If a future change requires another
 round of onboarding-style customization (e.g., adopting a new
 language alongside Rust), surface it as a plan-mode proposal
 before editing instructions or workflows.
+
+## IDD Workflow
+
+This project uses Issue-Driven Development (IDD) with parallel AI
+agents. Start with [docs/idd-workflow.md](docs/idd-workflow.md) for
+the cross-agent entry path and phase routing.
+
+Before starting IDD work, open
+`.github/instructions/idd-overview.instructions.md`. Open the routed
+phase file manually when the current step changes.
