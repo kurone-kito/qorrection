@@ -1,0 +1,25 @@
+{
+  "$schema": "https://kurone-kito.github.io/idd-skill/schemas/policy.schema.json",
+  "iddVersion": "0.1.0",
+  "markerPrefix": "qorrection",
+  "mergePolicy": "fully_autonomous_merge",
+  "reviewPolicy": "copilot-advisory",
+  "threadResolutionPolicy": "fast-agent-resolve",
+  "claimTiming": {
+    "staleAge": "PT24H",
+    "heartbeatInterval": "PT12H"
+  },
+  "trustedMarkerActors": ["kurone-kito"],
+  "commands": {
+    "install-deps": "true",
+    "fix-validate": "cargo fmt && cargo clippy --all-targets -- -D warnings",
+    "pre-push-validate": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all-targets --all-features",
+    "post-fix-validate": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all-targets --all-features"
+  },
+  "helperRuntime": {
+    "profile": "instructions-only"
+  },
+  "issueScope": "roadmap",
+  "orphanFirstPolicy": "none",
+  "skipIssueAuthorApprovalGate": true
+}
