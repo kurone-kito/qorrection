@@ -109,4 +109,3 @@ the cross-agent entry path and phase routing.
 Before starting IDD work, open
 `.github/instructions/idd-overview.instructions.md`. Open the routed
 phase file manually when the current step changes.
-
