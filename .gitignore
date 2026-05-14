@@ -128,8 +128,9 @@ $RECYCLE.BIN/
 **/*.rs.bk
 
 ### AI Agents ###
-# Claude Code local config
-.claude/
+# Claude Code local config (except shared skills)
+.claude/*
+!.claude/skills/
 
 # OpenAI Codex sandbox
 .codex/
