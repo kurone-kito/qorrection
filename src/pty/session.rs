@@ -228,8 +228,9 @@ where
 {
     let mut guard = KillOnDropGuard::armed(child.clone_killer());
 
-    let mut h2c = Some(pump.host_to_child);
-    let mut c2h = Some(pump.child_to_host);
+    let (host_to_child, child_to_host, host_to_child_render_progress) = pump.into_parts();
+    let mut h2c = Some(host_to_child);
+    let mut c2h = Some(child_to_host);
     let mut h2c_result: Option<io::Result<ForwarderExit>> = None;
     let mut c2h_result: Option<io::Result<ForwarderExit>> = None;
 
@@ -353,7 +354,10 @@ where
     if let Some(h) = h2c.take() {
         h.cancel();
         let budget = if h.cancel_wakes_read() {
-            deadlines.host_to_child_post_exit_budget
+            IoPump::host_to_child_post_exit_budget(
+                host_to_child_render_progress.as_ref(),
+                deadlines.host_to_child_post_exit_budget,
+            )
         } else {
             Duration::ZERO
         };
@@ -603,6 +607,7 @@ mod tests {
         IoPump {
             host_to_child,
             child_to_host,
+            host_to_child_render_progress: None,
         }
     }
 
@@ -633,6 +638,7 @@ mod tests {
         IoPump {
             host_to_child,
             child_to_host,
+            host_to_child_render_progress: None,
         }
     }
 
@@ -697,6 +703,7 @@ mod tests {
             IoPump {
                 host_to_child,
                 child_to_host,
+                host_to_child_render_progress: None,
             },
             exited,
         )
@@ -736,6 +743,7 @@ mod tests {
         IoPump {
             host_to_child,
             child_to_host,
+            host_to_child_render_progress: None,
         }
     }
 
@@ -958,6 +966,7 @@ mod tests {
         let pump = IoPump {
             host_to_child: h2c,
             child_to_host: c2h,
+            host_to_child_render_progress: None,
         };
 
         // Child takes many polls so the forwarder error

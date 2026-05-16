@@ -19,7 +19,7 @@
 //! matching trigger bytes away from the child and fire animation.
 
 use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 
 use super::{
     altscreen::AltScreenTracker,
@@ -62,8 +62,16 @@ impl InputObservation {
 /// pump halves.
 pub type SharedInputPump = Arc<Mutex<InputPump>>;
 
+/// Shared countdown of animation frames still in flight on the
+/// host->child path.
+pub(crate) type SharedRenderProgress = Arc<AtomicUsize>;
+
 pub fn shared_input_pump() -> SharedInputPump {
     Arc::new(Mutex::new(InputPump::new()))
+}
+
+pub(crate) fn shared_render_progress() -> SharedRenderProgress {
+    Arc::new(AtomicUsize::new(0))
 }
 
 type TriggerCallback = Box<dyn FnMut(Outcome) -> io::Result<()> + Send>;

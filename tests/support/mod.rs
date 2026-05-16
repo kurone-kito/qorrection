@@ -42,6 +42,20 @@ impl ArmedHelper {
         )
     }
 
+    /// Create a helper that announces readiness, then exits 7
+    /// after a short delay.
+    ///
+    /// The delay lets trigger-animation tests prove that q9
+    /// recovers cleanly even when the child dies mid-render
+    /// rather than before the trigger is fired.
+    #[allow(dead_code)]
+    pub fn ready_then_exit_seven() -> Self {
+        Self::from_scripts(
+            "#!/bin/sh\nprintf 'READY\\n'\nsleep 1\nexit 7\n",
+            "@echo off\r\necho READY\r\npowershell -NoProfile -Command \"Start-Sleep -Seconds 1; exit 7\"\r\nexit /b %ERRORLEVEL%\r\n",
+        )
+    }
+
     /// Command name to pass to `q9`.
     pub fn command(&self) -> &OsStr {
         &self.command

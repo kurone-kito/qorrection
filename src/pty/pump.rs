@@ -9,7 +9,11 @@
 //! by PR 4 (#33).
 
 use std::io::{self, Read, Write};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex, MutexGuard,
+};
+use std::time::Duration;
 
 #[cfg(unix)]
 use std::os::fd::RawFd;
@@ -21,11 +25,13 @@ use crate::pty::forward::{
 };
 use crate::pty::spawn::SpawnedSession;
 use crate::trigger::{
-    input::{shared_input_pump, InputInterceptor},
+    input::{shared_input_pump, shared_render_progress, InputInterceptor, SharedRenderProgress},
     output::OutputArbiter,
     parser::Outcome,
 };
 use crate::{Error, Result};
+
+const RENDER_JOIN_SLACK: Duration = Duration::from_millis(250);
 
 /// Owning bundle of the host↔child forwarder threads.
 ///
@@ -35,6 +41,43 @@ use crate::{Error, Result};
 pub(crate) struct IoPump {
     pub(crate) host_to_child: ForwarderHandle,
     pub(crate) child_to_host: ForwarderHandle,
+    pub(crate) host_to_child_render_progress: Option<SharedRenderProgress>,
+}
+
+impl IoPump {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        ForwarderHandle,
+        ForwarderHandle,
+        Option<SharedRenderProgress>,
+    ) {
+        (
+            self.host_to_child,
+            self.child_to_host,
+            self.host_to_child_render_progress,
+        )
+    }
+
+    pub(crate) fn host_to_child_post_exit_budget(
+        render_progress: Option<&SharedRenderProgress>,
+        base: Duration,
+    ) -> Duration {
+        let Some(render_progress) = render_progress else {
+            return base;
+        };
+        let frames_remaining = render_progress.load(Ordering::SeqCst);
+        if frames_remaining == 0 {
+            return base;
+        }
+
+        let frames_remaining = u32::try_from(frames_remaining).unwrap_or(u32::MAX);
+        let render_budget = FRAME_DELAY
+            .checked_mul(frames_remaining)
+            .unwrap_or(Duration::from_secs(60))
+            + RENDER_JOIN_SLACK;
+        base.max(render_budget)
+    }
 }
 
 enum HostToChildWriter<W> {
@@ -172,7 +215,21 @@ fn render_cols() -> u16 {
     }
 }
 
-fn render_animation<W>(host_stdout: &SharedWriter<W>, outcome: Outcome) -> io::Result<()>
+struct RenderProgressGuard<'a> {
+    frames_remaining: &'a AtomicUsize,
+}
+
+impl Drop for RenderProgressGuard<'_> {
+    fn drop(&mut self) {
+        self.frames_remaining.store(0, Ordering::SeqCst);
+    }
+}
+
+fn render_animation<W>(
+    host_stdout: &SharedWriter<W>,
+    outcome: Outcome,
+    frames_remaining: &AtomicUsize,
+) -> io::Result<()>
 where
     W: Write,
 {
@@ -183,11 +240,14 @@ where
         return Ok(());
     }
 
+    frames_remaining.store(plan.frames.len(), Ordering::SeqCst);
+    let _render_progress = RenderProgressGuard { frames_remaining };
     let mut presentation =
         LockedPresentation::acquire(host_stdout.lock()).map_err(io::Error::other)?;
     for frame in &plan.frames {
         draw_frame(presentation.writer(), frame).map_err(io::Error::other)?;
         std::thread::sleep(FRAME_DELAY);
+        frames_remaining.fetch_sub(1, Ordering::SeqCst);
     }
     Ok(())
 }
@@ -196,6 +256,7 @@ struct TriggerWiring<PtyW, HOut> {
     host_to_child: HostToChildWriter<PtyW>,
     child_to_host: ChildToHostWriter<SharedWriter<HOut>>,
     input: Option<crate::trigger::input::SharedInputPump>,
+    render_progress: Option<SharedRenderProgress>,
 }
 
 fn wire_trigger_io<PtyW, HOut>(
@@ -211,23 +272,29 @@ where
     if armed {
         let input = shared_input_pump();
         let render_stdout = shared_stdout.clone();
+        let render_progress = shared_render_progress();
+        let callback_render_progress = render_progress.clone();
         TriggerWiring {
             host_to_child: HostToChildWriter::Armed(InputInterceptor::new(
                 pty_writer,
                 input.clone(),
-                move |outcome| render_animation(&render_stdout, outcome),
+                move |outcome| {
+                    render_animation(&render_stdout, outcome, callback_render_progress.as_ref())
+                },
             )),
             child_to_host: ChildToHostWriter::Armed(OutputArbiter::new(
                 shared_stdout,
                 input.clone(),
             )),
             input: Some(input),
+            render_progress: Some(render_progress),
         }
     } else {
         TriggerWiring {
             host_to_child: HostToChildWriter::Passthrough(pty_writer),
             child_to_host: ChildToHostWriter::Passthrough(shared_stdout),
             input: None,
+            render_progress: None,
         }
     }
 }
@@ -263,6 +330,7 @@ where
         host_to_child: pty_writer,
         child_to_host: host_stdout,
         input: _input,
+        render_progress,
     } = wire_trigger_io(armed, pty_writer, host_stdout);
 
     let host_to_child = spawn_cancellable_forwarder(
@@ -276,6 +344,7 @@ where
     Ok(IoPump {
         host_to_child,
         child_to_host,
+        host_to_child_render_progress: render_progress,
     })
 }
 

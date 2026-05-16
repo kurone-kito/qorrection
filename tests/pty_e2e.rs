@@ -23,6 +23,7 @@ mod unix {
     const LARGE_WQ_COLS: u16 = 120;
     const BANG_CARS: usize = 9;
     const PARADE_MIN_VISIBLE_LABELS: usize = 3;
+    const LONG_ANIMATION_COLS: u16 = 120;
     const PTY_ROWS: u16 = 24;
 
     fn q9() -> Command {
@@ -287,6 +288,42 @@ mod unix {
         Ok(())
     }
 
+    /// Issue #57 E2E coverage: an armed child may exit while the
+    /// parent is still animating `:q`, and q9 must still leave
+    /// the alt screen, avoid hanging, and propagate the child's
+    /// eventual non-zero exit status.
+    #[test]
+    fn q9_armed_child_exit_during_animation_exits_nonzero_without_hanging(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let helper = support::ArmedHelper::ready_then_exit_seven();
+        let mut command = q9_with_tty_size(LONG_ANIMATION_COLS, PTY_ROWS);
+        command.env("PATH", helper.path()).arg(helper.command());
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        assert_eq!(session.read_line()?, "READY");
+        session.send_line(":q")?;
+
+        let _before_animation = session.exp_string("\u{1b}[?1049h")?;
+        let animation = session.exp_string("\u{1b}[?1049l")?;
+        let normalized_animation = animation.replace("\r\n", "\n");
+        assert!(
+            normalized_animation.contains("\u{1b}[?25l"),
+            "expected animation to hide the cursor, got {normalized_animation:?}"
+        );
+        assert!(
+            normalized_animation.contains("\u{1b}[2J"),
+            "expected animation to draw at least one frame, got {normalized_animation:?}"
+        );
+
+        let _remaining = session.exp_eof()?;
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 7) => Ok(()),
+            other => {
+                panic!("expected armed helper exit 7 to propagate after animation, got {other:?}")
+            }
+        }
+    }
+
     #[test]
     fn q9_cat_typed_ctrl_c_reaches_child_and_exits_130() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = q9();
@@ -400,6 +437,14 @@ mod windows {
     #[test]
     #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
     fn q9_armed_helper_q_bang_shows_nine_car_parade() {}
+
+    /// Windows ConPTY trigger-animation E2E for a child exiting
+    /// mid-animation is tracked separately for v0.1 because
+    /// this suite depends on Unix-only `rexpect`.
+    /// Tracking issue: <https://github.com/kurone-kito/qorrection/issues/65>.
+    #[test]
+    #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
+    fn q9_armed_child_exit_during_animation_exits_nonzero_without_hanging() {}
 
     /// Windows ConPTY E2E coverage is tracked separately for
     /// v0.1 because this suite depends on Unix-only `rexpect`.
