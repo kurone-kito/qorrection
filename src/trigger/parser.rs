@@ -155,6 +155,16 @@ impl Parser {
         self.reset_line();
     }
 
+    /// Whether the current line is still a possible trigger
+    /// prefix if more bytes arrive before the terminator.
+    pub(crate) fn can_still_match(&self) -> bool {
+        !self.dirty
+            && matches!(
+                self.buf.as_slice(),
+                b"" | b":" | b":q" | b":q!" | b":w" | b":wq"
+            )
+    }
+
     /// Test/diagnostic helper: feed a slice and return the
     /// sequence of non-`None` outcomes in order.
     pub fn feed_all(&mut self, bytes: &[u8]) -> Vec<Outcome> {

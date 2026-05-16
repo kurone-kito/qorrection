@@ -141,7 +141,7 @@ fn fallback_plan(trigger: fallback::Trigger) -> RenderPlan {
     }
 }
 
-fn draw_frame<W>(out: &mut W, frame: &str) -> Result<()>
+pub(crate) fn draw_frame<W>(out: &mut W, frame: &str) -> Result<()>
 where
     W: Write,
 {

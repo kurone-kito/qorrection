@@ -16,7 +16,7 @@
 //! The type intentionally has no I/O side effects. Phase 3 can
 //! wire it in as detect-only logging while still forwarding bytes
 //! unchanged; later phases can use the same observations to route
-//! matching trigger bytes away from the child.
+//! matching trigger bytes away from the child and fire animation.
 
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
@@ -66,6 +66,8 @@ pub fn shared_input_pump() -> SharedInputPump {
     Arc::new(Mutex::new(InputPump::new()))
 }
 
+type TriggerCallback = Box<dyn FnMut(Outcome) -> io::Result<()> + Send>;
+
 /// Host-input [`Write`] adapter for Phase 3 detect-only wiring.
 ///
 /// The adapter preserves the byte stream exactly as accepted by the
@@ -89,8 +91,82 @@ impl<W> InputDetector<W> {
     }
 
     #[cfg(test)]
-    fn inner(&self) -> &W {
+    pub(crate) fn inner(&self) -> &W {
         &self.inner
+    }
+}
+
+/// Host-input [`Write`] adapter that suppresses fired trigger
+/// lines from the child PTY and invokes a render callback.
+///
+/// Only bytes on a line that is still a possible trigger prefix
+/// are held back. As soon as a line becomes impossible to match,
+/// the adapter flushes the buffered prefix and returns to normal
+/// passthrough for the rest of that line.
+pub(crate) struct InputInterceptor<W> {
+    inner: W,
+    input: SharedInputPump,
+    on_trigger: TriggerCallback,
+    holdback: Parser,
+    pending: Vec<u8>,
+    line_dirty: bool,
+    suppress_next_lf: bool,
+    poison_warned: bool,
+}
+
+impl<W> std::fmt::Debug for InputInterceptor<W>
+where
+    W: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InputInterceptor")
+            .field("inner", &self.inner)
+            .field("holdback", &self.holdback)
+            .field("pending", &self.pending)
+            .field("line_dirty", &self.line_dirty)
+            .field("suppress_next_lf", &self.suppress_next_lf)
+            .field("poison_warned", &self.poison_warned)
+            .finish()
+    }
+}
+
+impl<W> InputInterceptor<W> {
+    pub(crate) fn new<R>(inner: W, input: SharedInputPump, on_trigger: R) -> Self
+    where
+        R: FnMut(Outcome) -> io::Result<()> + Send + 'static,
+    {
+        Self {
+            inner,
+            input,
+            on_trigger: Box::new(on_trigger),
+            holdback: Parser::new(),
+            pending: Vec::new(),
+            line_dirty: false,
+            suppress_next_lf: false,
+            poison_warned: false,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inner(&self) -> &W {
+        &self.inner
+    }
+
+    fn forward_pending(&mut self) -> io::Result<()>
+    where
+        W: Write,
+    {
+        for b in std::mem::take(&mut self.pending) {
+            self.inner.write_all(&[b])?;
+        }
+        Ok(())
+    }
+
+    fn forward_byte(&mut self, b: u8) -> io::Result<()>
+    where
+        W: Write,
+    {
+        self.inner.write_all(&[b])
     }
 }
 
@@ -120,22 +196,81 @@ where
     }
 }
 
-fn observe_detected_input<F>(
-    input: &SharedInputPump,
-    bytes: &[u8],
-    warned: &mut bool,
-    mut on_detect: F,
-) -> io::Result<()>
+impl<W> Write for InputInterceptor<W>
 where
-    F: FnMut(Outcome),
+    W: Write,
 {
-    let mut detected = Vec::new();
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut consumed = 0;
+
+        for &b in buf {
+            if self.suppress_next_lf {
+                self.suppress_next_lf = false;
+                if b == b'\n' {
+                    consumed += 1;
+                    continue;
+                }
+            }
+
+            let observation = observe_input_byte(&self.input, b, &mut self.poison_warned);
+            match observation {
+                InputObservation::Bypassed(_) => {
+                    self.holdback.reset();
+                    self.line_dirty = false;
+                    self.forward_pending()?;
+                    self.forward_byte(b)?;
+                }
+                InputObservation::Parsed(observed) => {
+                    if self.line_dirty {
+                        self.forward_byte(b)?;
+                        if matches!(b, b'\r' | b'\n') {
+                            self.line_dirty = false;
+                            self.holdback.reset();
+                        }
+                        consumed += 1;
+                        continue;
+                    }
+
+                    let held = self.holdback.feed(b);
+                    debug_assert_eq!(
+                        held, observed,
+                        "holdback parser must mirror the shared input pump while armed"
+                    );
+
+                    if held != Outcome::None {
+                        self.pending.clear();
+                        if b == b'\r' {
+                            self.suppress_next_lf = true;
+                        }
+                        (self.on_trigger)(held)?;
+                    } else if matches!(b, b'\r' | b'\n') {
+                        self.forward_pending()?;
+                        self.forward_byte(b)?;
+                    } else if self.holdback.can_still_match() {
+                        self.pending.push(b);
+                    } else {
+                        self.forward_pending()?;
+                        self.forward_byte(b)?;
+                        self.line_dirty = true;
+                    }
+                }
+            }
+
+            consumed += 1;
+        }
+
+        Ok(consumed)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+fn observe_input_byte(input: &SharedInputPump, b: u8, warned: &mut bool) -> InputObservation {
     let mut input = match input.lock() {
         Ok(guard) => guard,
         Err(err) => {
-            // The mutex was poisoned by a panic in another thread.  Recover
-            // the inner value so trigger detection continues; the poisoned
-            // state remains but does not affect correctness of the pump itself.
             if !*warned {
                 tracing::warn!(
                     error = %err,
@@ -146,13 +281,25 @@ where
             err.into_inner()
         }
     };
+    input.feed_input_byte(b)
+}
+
+fn observe_detected_input<F>(
+    input: &SharedInputPump,
+    bytes: &[u8],
+    warned: &mut bool,
+    mut on_detect: F,
+) -> io::Result<()>
+where
+    F: FnMut(Outcome),
+{
+    let mut detected = Vec::new();
     for &b in bytes {
-        let outcome = input.feed_input_byte(b).outcome();
+        let outcome = observe_input_byte(input, b, warned).outcome();
         if outcome != Outcome::None {
             detected.push(outcome);
         }
     }
-    drop(input);
 
     for outcome in detected {
         on_detect(outcome);
@@ -232,6 +379,7 @@ impl InputPump {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     const BEGIN_PASTE: &[u8] = b"\x1b[200~";
     const END_PASTE: &[u8] = b"\x1b[201~";
@@ -472,6 +620,104 @@ mod tests {
             "trigger detection must survive mutex poison recovery"
         );
         assert!(warned, "poison_warned must be set after first recovery");
+    }
+
+    #[test]
+    fn input_interceptor_swallows_trigger_and_fires_callback() {
+        let input = shared_input_pump();
+        let fired = Arc::new(Mutex::new(Vec::new()));
+        let fired_probe = Arc::clone(&fired);
+        let mut interceptor = InputInterceptor::new(Vec::new(), input, move |outcome| {
+            fired_probe.lock().unwrap().push(outcome);
+            Ok(())
+        });
+
+        interceptor.write_all(b":q\n").unwrap();
+
+        assert_eq!(interceptor.inner().as_slice(), b"");
+        assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Q]);
+    }
+
+    #[test]
+    fn input_interceptor_preserves_cross_write_trigger_state() {
+        let input = shared_input_pump();
+        let fired = Arc::new(Mutex::new(Vec::new()));
+        let fired_probe = Arc::clone(&fired);
+        let mut interceptor = InputInterceptor::new(Vec::new(), input, move |outcome| {
+            fired_probe.lock().unwrap().push(outcome);
+            Ok(())
+        });
+
+        assert_eq!(interceptor.write(b":").unwrap(), 1);
+        assert_eq!(interceptor.write(b"q").unwrap(), 1);
+        assert_eq!(interceptor.write(b"\n").unwrap(), 1);
+
+        assert_eq!(interceptor.inner().as_slice(), b"");
+        assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Q]);
+    }
+
+    #[test]
+    fn input_interceptor_flushes_nonmatching_lines_to_the_child() {
+        let input = shared_input_pump();
+        let fired = Arc::new(Mutex::new(Vec::new()));
+        let fired_probe = Arc::clone(&fired);
+        let mut interceptor = InputInterceptor::new(Vec::new(), input, move |outcome| {
+            fired_probe.lock().unwrap().push(outcome);
+            Ok(())
+        });
+
+        interceptor.write_all(b":qq\n").unwrap();
+
+        assert_eq!(interceptor.inner().as_slice(), b":qq\n");
+        assert!(fired.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn input_interceptor_swallows_crlf_second_byte_after_fire() {
+        let input = shared_input_pump();
+        let fired = Arc::new(Mutex::new(Vec::new()));
+        let fired_probe = Arc::clone(&fired);
+        let mut interceptor = InputInterceptor::new(Vec::new(), input, move |outcome| {
+            fired_probe.lock().unwrap().push(outcome);
+            Ok(())
+        });
+
+        interceptor.write_all(b":wq\r\n").unwrap();
+
+        assert_eq!(interceptor.inner().as_slice(), b"");
+        assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Wq]);
+    }
+
+    #[test]
+    fn input_interceptor_flushes_buffered_prefix_when_alt_screen_disarms() {
+        let input = shared_input_pump();
+        let fired = Arc::new(Mutex::new(Vec::new()));
+        let fired_probe = Arc::clone(&fired);
+        let mut interceptor = InputInterceptor::new(Vec::new(), input.clone(), move |outcome| {
+            fired_probe.lock().unwrap().push(outcome);
+            Ok(())
+        });
+
+        assert_eq!(interceptor.write(b":").unwrap(), 1);
+        input.lock().unwrap().feed_child_output_slice(ENTER_ALT);
+        interceptor.write_all(b"q\n").unwrap();
+
+        assert_eq!(interceptor.inner().as_slice(), b":q\n");
+        assert!(fired.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn input_interceptor_releases_input_lock_before_render_callback() {
+        let input = shared_input_pump();
+        let input_for_callback = input.clone();
+        let mut interceptor = InputInterceptor::new(Vec::new(), input, move |_outcome| {
+            let _guard = input_for_callback
+                .try_lock()
+                .expect("render callback must not run while the input mutex is held");
+            Ok(())
+        });
+
+        interceptor.write_all(b":q\n").unwrap();
     }
 
     #[test]
