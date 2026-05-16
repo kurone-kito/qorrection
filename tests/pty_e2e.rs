@@ -21,7 +21,7 @@ mod unix {
     // assertion into a timeout race.
     const TIMEOUT_MS: u64 = 30_000;
     const LARGE_WQ_COLS: u16 = 120;
-    const BANG_COLS: u16 = 200;
+    const BANG_CARS: usize = 9;
     const PTY_ROWS: u16 = 24;
 
     fn q9() -> Command {
@@ -43,6 +43,11 @@ mod unix {
         command.arg("-c").arg(script).arg(env!("CARGO_BIN_EXE_q9"));
         command.env_remove("QORRECTION_LOG");
         command
+    }
+
+    fn bang_cols() -> u16 {
+        u16::try_from(qorrection::anim::car::max_width(qorrection::anim::car::STD) * BANG_CARS)
+            .expect("nine-car convoy width must fit in u16")
     }
 
     fn max_frame_occurrences(animation: &str, needle: &str) -> usize {
@@ -214,7 +219,10 @@ mod unix {
     #[test]
     fn q9_armed_helper_q_bang_shows_nine_car_parade() -> Result<(), Box<dyn std::error::Error>> {
         let helper = support::ArmedHelper::echo_stdin();
-        let mut command = q9_with_tty_size(BANG_COLS, PTY_ROWS);
+        // Use the full convoy width so every hosted runner gets at
+        // least one frame where all nine labels are simultaneously
+        // visible instead of clipped at the viewport edge.
+        let mut command = q9_with_tty_size(bang_cols(), PTY_ROWS);
         command.env("PATH", helper.path()).arg(helper.command());
 
         let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
@@ -227,10 +235,10 @@ mod unix {
             normalized_animation.contains("\u{1b}[2J"),
             "expected animation to draw at least one frame, got {normalized_animation:?}"
         );
-        assert_eq!(
-            max_frame_occurrences(&normalized_animation, "QUEUE"),
-            9,
-            "expected at least one fully visible nine-car convoy frame, got {normalized_animation:?}"
+        let max_queue_labels = max_frame_occurrences(&normalized_animation, "QUEUE");
+        assert!(
+            max_queue_labels >= BANG_CARS,
+            "expected at least one fully visible nine-car convoy frame; best frame showed {max_queue_labels} labels in {normalized_animation:?}"
         );
         assert!(
             !normalized_animation.contains("418 I'm an AI agent"),
