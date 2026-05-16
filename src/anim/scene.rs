@@ -13,6 +13,8 @@ use crate::anim::{
     frame::{self, SirenPhase},
 };
 
+const BANG_CARS: usize = 9;
+
 /// Build the standard `:q` ambulance scene.
 ///
 /// The scene uses [`car::STD`] and sweeps it from the first
@@ -38,6 +40,17 @@ pub fn wq(cols: u16) -> Vec<String> {
     sweep(car::BIG, cols)
 }
 
+/// Build the `:q!` nine-car parade scene.
+///
+/// The parade reuses the standard `QUEUE` body nine times on a
+/// shared convoy timeline. Unlike [`q`] and [`wq`], it omits the
+/// FI/FO wheel-row trail: the single-car trail spans the whole
+/// left canvas and would overwrite neighboring cars inside a
+/// multi-car convoy.
+pub fn bang(cols: u16) -> Vec<String> {
+    parade(car::STD, cols, BANG_CARS)
+}
+
 /// Sweep one ASCII asset across the visible width using the
 /// standard left-to-right timeline policy.
 fn sweep(car_asset: &str, cols: u16) -> Vec<String> {
@@ -58,6 +71,118 @@ fn sweep(car_asset: &str, cols: u16) -> Vec<String> {
     }
 
     frames
+}
+
+/// Move a multi-car convoy across the visible width.
+fn parade(car_asset: &str, cols: u16, cars: usize) -> Vec<String> {
+    if cols == 0 || cars == 0 {
+        return Vec::new();
+    }
+
+    let car_width = car::max_width(car_asset);
+    let convoy_width = cars * car_width;
+    let car_lines = car::lines(car_asset);
+    let (car_left, car_right) = visible_bounds(&car_lines);
+    let start_x = -(((convoy_width - car_width) + car_right) as i32);
+    let end_x = i32::from(cols) - 1 - car_left as i32;
+    let mut frames = Vec::with_capacity((end_x - start_x + 1) as usize);
+
+    for convoy_x in start_x..=end_x {
+        frames.push(render_parade_frame(
+            &car_lines,
+            cols as usize,
+            convoy_x,
+            car_width,
+            cars,
+        ));
+    }
+
+    frames
+}
+
+/// Find the leftmost and rightmost non-space columns in one asset.
+fn visible_bounds(car_lines: &[&str]) -> (usize, usize) {
+    let mut left = usize::MAX;
+    let mut right = 0;
+
+    for line in car_lines {
+        let bytes = line.as_bytes();
+        if let Some(first) = bytes.iter().position(|byte| *byte != b' ') {
+            left = left.min(first);
+            right = right.max(
+                bytes
+                    .iter()
+                    .rposition(|byte| *byte != b' ')
+                    .expect("non-empty ASCII asset line must have a right edge"),
+            );
+        }
+    }
+
+    if left == usize::MAX {
+        (0, 0)
+    } else {
+        (left, right)
+    }
+}
+
+/// Render one parade frame directly into the visible-width canvas.
+fn render_parade_frame(
+    car_lines: &[&str],
+    cols: usize,
+    convoy_x: i32,
+    car_width: usize,
+    cars: usize,
+) -> String {
+    let mut rows = vec![vec![b' '; cols]; car_lines.len()];
+
+    for car_idx in 0..cars {
+        let car_x = convoy_x + (car_idx * car_width) as i32;
+        paint_visible_car(&mut rows, car_lines, car_x);
+    }
+
+    join_rows(rows)
+}
+
+/// Paint one car body into the visible canvas without any siren trail.
+fn paint_visible_car(rows: &mut [Vec<u8>], car_lines: &[&str], x_offset: i32) {
+    for (row, line) in rows.iter_mut().zip(car_lines.iter().copied()) {
+        let bytes = line.as_bytes();
+        let (src_start, dst_start) = if x_offset >= 0 {
+            (0, x_offset as usize)
+        } else {
+            (x_offset.unsigned_abs() as usize, 0)
+        };
+
+        if src_start >= bytes.len() || dst_start >= row.len() {
+            continue;
+        }
+
+        let copy_len = (row.len() - dst_start).min(bytes.len() - src_start);
+        for idx in 0..copy_len {
+            let byte = bytes[src_start + idx];
+            if byte != b' ' {
+                row[dst_start + idx] = byte;
+            }
+        }
+    }
+}
+
+/// Join visible rows while trimming trailing padding spaces.
+fn join_rows(rows: Vec<Vec<u8>>) -> String {
+    let mut out = String::new();
+
+    for (idx, row) in rows.iter().enumerate() {
+        let end = row
+            .iter()
+            .rposition(|byte| *byte != b' ')
+            .map_or(0, |i| i + 1);
+        out.push_str(std::str::from_utf8(&row[..end]).expect("parade scene rows must stay ASCII"));
+        if idx + 1 < rows.len() {
+            out.push('\n');
+        }
+    }
+
+    out
 }
 
 /// Clip each row in an ASCII frame to the visible width.
@@ -84,6 +209,31 @@ fn clip_right(frame: &str, cols: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn label_row(frame: &str) -> &str {
+        frame.split('\n').nth(2).unwrap()
+    }
+
+    fn count_occurrences(haystack: &str, needle: &str) -> usize {
+        let mut count = 0;
+        let mut rest = haystack;
+        while let Some(idx) = rest.find(needle) {
+            count += 1;
+            rest = &rest[idx + needle.len()..];
+        }
+        count
+    }
+
+    fn positions(haystack: &str, needle: &str) -> Vec<usize> {
+        let mut found = Vec::new();
+        let mut start = 0;
+        while let Some(idx) = haystack[start..].find(needle) {
+            let pos = start + idx;
+            found.push(pos);
+            start = pos + needle.len();
+        }
+        found
+    }
 
     fn wheel_row(frame: &str) -> &str {
         frame.rsplit('\n').next().unwrap()
@@ -241,5 +391,91 @@ mod tests {
                 "next frame should flip back to Fi-leading trail; got {b:?}",
             );
         }
+    }
+
+    #[test]
+    fn bang_scene_returns_empty_when_no_columns_are_visible() {
+        assert!(bang(0).is_empty());
+    }
+
+    #[test]
+    fn bang_scene_uses_the_full_visible_convoy_sweep_range() {
+        let cols = 80;
+        let scene = bang(cols);
+        let std_lines = car::lines(car::STD);
+        let (car_left, car_right) = visible_bounds(&std_lines);
+        let visible_width =
+            ((BANG_CARS - 1) * car::max_width(car::STD)) + (car_right - car_left + 1);
+        let expected = cols as usize + visible_width - 1;
+        assert_eq!(scene.len(), expected);
+        assert!(
+            scene
+                .first()
+                .unwrap()
+                .chars()
+                .any(|c| c != ' ' && c != '\n'),
+            "first frame should contain the first visible convoy sliver",
+        );
+        assert!(
+            scene.last().unwrap().chars().any(|c| c != ' ' && c != '\n'),
+            "last frame should contain the last visible convoy sliver",
+        );
+    }
+
+    #[test]
+    fn bang_scene_contains_all_nine_queue_labels_when_fully_visible() {
+        let convoy_width = BANG_CARS * car::max_width(car::STD);
+        let scene = bang(convoy_width as u16);
+        let x_zero_idx = convoy_width - 1;
+        let frame = &scene[x_zero_idx];
+        let label_positions = positions(label_row(frame), "QUEUE");
+
+        assert_eq!(count_occurrences(frame, "QUEUE"), BANG_CARS);
+        assert_eq!(label_positions.len(), BANG_CARS);
+        for pair in label_positions.windows(2) {
+            assert_eq!(
+                pair[1] - pair[0],
+                car::max_width(car::STD),
+                "adjacent labels should stay convoy-width apart",
+            );
+        }
+    }
+
+    #[test]
+    fn bang_scene_right_clips_every_row_to_the_requested_width() {
+        let cols = 24;
+        let scene = bang(cols);
+        for frame in &scene {
+            let lines: Vec<&str> = frame.split('\n').collect();
+            assert_eq!(lines.len(), car::height(car::STD));
+            for line in lines {
+                assert!(
+                    line.len() <= cols as usize,
+                    "line exceeds {cols} cols: {line:?}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bang_scene_moves_the_convoy_one_column_per_tick() {
+        let convoy_width = BANG_CARS * car::max_width(car::STD);
+        let scene = bang(convoy_width as u16 + 1);
+        let at_zero = positions(label_row(&scene[convoy_width - 1]), "QUEUE");
+        let at_one = positions(label_row(&scene[convoy_width]), "QUEUE");
+
+        assert_eq!(at_zero.len(), BANG_CARS);
+        assert_eq!(at_one.len(), BANG_CARS);
+        for (left, right) in at_zero.iter().zip(at_one.iter()) {
+            assert_eq!(*right, *left + 1, "convoy should advance by one column");
+        }
+    }
+
+    #[test]
+    fn bang_scene_never_uses_the_big_418_asset() {
+        let scene = bang(200);
+        assert!(scene
+            .iter()
+            .all(|frame| !frame.contains("418 I'm an AI agent")));
     }
 }
