@@ -10,7 +10,13 @@
 
 use std::io::{Read, Write};
 
-use crate::pty::forward::{spawn_forwarder, Direction, ForwarderHandle};
+#[cfg(unix)]
+use std::os::fd::RawFd;
+
+use crate::pty::forward::{
+    spawn_cancellable_forwarder, spawn_forwarder, CancelHandle, CancellableReader, Direction,
+    ForwarderHandle,
+};
 use crate::pty::spawn::SpawnedSession;
 use crate::trigger::{
     input::{shared_input_pump, InputDetector},
@@ -121,11 +127,12 @@ where
 /// Errors from portable-pty (handle acquisition, fd dup) flow
 /// through [`Error::Pty`], preserving the existing exit-code
 /// classification from `src/error.rs`.
-pub(crate) fn start_io_pump<HIn, HOut>(
+fn start_io_pump_with_reader<HIn, HOut>(
     session: &mut SpawnedSession,
-    host_stdin: HIn,
+    host_stdin: CancellableReader<HIn>,
     host_stdout: HOut,
     armed: bool,
+    host_cancel_wakes_read: bool,
 ) -> Result<IoPump>
 where
     HIn: Read + Send + 'static,
@@ -139,13 +146,61 @@ where
         input: _input,
     } = wire_trigger_io(armed, pty_writer, host_stdout);
 
-    let host_to_child = spawn_forwarder(Direction::HostToChild, host_stdin, pty_writer);
+    let host_to_child = spawn_cancellable_forwarder(
+        Direction::HostToChild,
+        host_stdin,
+        pty_writer,
+        host_cancel_wakes_read,
+    );
     let child_to_host = spawn_forwarder(Direction::ChildToHost, pty_reader, host_stdout);
 
     Ok(IoPump {
         host_to_child,
         child_to_host,
     })
+}
+
+#[cfg(any(not(unix), test))]
+pub(crate) fn start_io_pump<HIn, HOut>(
+    session: &mut SpawnedSession,
+    host_stdin: HIn,
+    host_stdout: HOut,
+    armed: bool,
+) -> Result<IoPump>
+where
+    HIn: Read + Send + 'static,
+    HOut: Write + Send + 'static,
+{
+    let host_cancel = CancelHandle::new();
+    start_io_pump_with_reader(
+        session,
+        CancellableReader::new(host_stdin, host_cancel),
+        host_stdout,
+        armed,
+        false,
+    )
+}
+
+#[cfg(unix)]
+pub(crate) fn start_io_pump_pollable<HIn, HOut>(
+    session: &mut SpawnedSession,
+    host_stdin: HIn,
+    host_stdout: HOut,
+    armed: bool,
+    host_stdin_fd: RawFd,
+) -> Result<IoPump>
+where
+    HIn: Read + Send + 'static,
+    HOut: Write + Send + 'static,
+{
+    let host_cancel = CancelHandle::new();
+    start_io_pump_with_reader(
+        session,
+        CancellableReader::with_poll_fd(host_stdin, host_cancel, host_stdin_fd),
+        host_stdout,
+        armed,
+        true,
+    )
 }
 
 #[cfg(test)]
