@@ -396,4 +396,84 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(restores.load(Ordering::SeqCst), 1);
     }
+
+    fn reviewable_ansi(bytes: &[u8]) -> String {
+        let mut out = String::new();
+        for &byte in bytes {
+            match byte {
+                0x1b => out.push_str("<ESC>"),
+                b'\n' => out.push('\n'),
+                b'\r' => out.push_str("<CR>"),
+                0x20..=0x7e => out.push(byte as char),
+                _ => out.push_str(&format!("\\x{byte:02X}")),
+            }
+        }
+        out
+    }
+
+    fn snapshot_frames(frames: &[String]) -> String {
+        let mut out = String::new();
+        for (idx, frame) in frames.iter().enumerate() {
+            if idx > 0 {
+                out.push('\n');
+            }
+            out.push_str(&format!("--- frame {idx:03} ---\n"));
+
+            let mut buf = Vec::new();
+            draw_frame(&mut buf, frame).expect("render snapshot frame");
+            out.push_str(&reviewable_ansi(&buf));
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn snapshot_fallback_q_39() {
+        let plan = render_plan(Outcome::Q, 39).unwrap();
+        insta::assert_snapshot!("fallback_q_39", snapshot_frames(&plan.frames));
+    }
+
+    #[test]
+    fn snapshot_fallback_wq_39() {
+        let plan = render_plan(Outcome::Wq, 39).unwrap();
+        insta::assert_snapshot!("fallback_wq_39", snapshot_frames(&plan.frames));
+    }
+
+    #[test]
+    fn snapshot_fallback_bang_39() {
+        let plan = render_plan(Outcome::QBang, 39).unwrap();
+        insta::assert_snapshot!("fallback_bang_39", snapshot_frames(&plan.frames));
+    }
+
+    #[test]
+    fn snapshot_tiny_q_40() {
+        let plan = render_plan(Outcome::Q, 40).unwrap();
+        insta::assert_snapshot!("tiny_q_40", snapshot_frames(&plan.frames));
+    }
+
+    #[test]
+    fn snapshot_tiny_bang_40() {
+        let plan = render_plan(Outcome::QBang, 40).unwrap();
+        insta::assert_snapshot!("tiny_bang_40", snapshot_frames(&plan.frames));
+    }
+
+    #[test]
+    fn snapshot_q_80() {
+        let plan = render_plan(Outcome::Q, 80).unwrap();
+        insta::assert_snapshot!("q_80", snapshot_frames(&plan.frames));
+    }
+
+    #[test]
+    fn snapshot_wq_120() {
+        let plan = render_plan(Outcome::Wq, 120).unwrap();
+        insta::assert_snapshot!("wq_120", snapshot_frames(&plan.frames));
+    }
+
+    #[test]
+    fn snapshot_bang_80() {
+        let plan = render_plan(Outcome::QBang, 80).unwrap();
+        insta::assert_snapshot!("bang_80", snapshot_frames(&plan.frames));
+    }
 }

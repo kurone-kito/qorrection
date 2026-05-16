@@ -1,0 +1,6 @@
+---
+source: src/anim/render.rs
+expression: snapshot_frames(&plan.frames)
+---
+--- frame 000 ---
+<ESC>[1;1H<ESC>[2J[QQ] Fi-Fo-Fi-Fo... :q copy that.

@@ -1,0 +1,787 @@
+---
+source: src/anim/render.rs
+expression: snapshot_frames(&plan.frames)
+---
+--- frame 000 ---
+<ESC>[1;1H<ESC>[2J
+
+
+|
+|
+/
+
+--- frame 001 ---
+<ESC>[1;1H<ESC>[2J
+
+\
+_|
+ |
+_/
+
+--- frame 002 ---
+<ESC>[1;1H<ESC>[2J
+_
+ \
+__|
+  |
+)_/
+
+--- frame 003 ---
+<ESC>[1;1H<ESC>[2J
+__
+  \
+___|
+o  |
+O)_/
+
+--- frame 004 ---
+<ESC>[1;1H<ESC>[2J
+___
+   \
+____|
+ o  |
+(O)_/
+
+--- frame 005 ---
+<ESC>[1;1H<ESC>[2J
+____
+    \
+_____|
+  o  |
+_(O)_/
+
+--- frame 006 ---
+<ESC>[1;1H<ESC>[2J
+\____
+     \
+______|
+   o  |
+__(O)_/
+
+--- frame 007 ---
+<ESC>[1;1H<ESC>[2J
+ \____
+      \
+_______|
+    o  |
+___(O)_/
+
+--- frame 008 ---
+<ESC>[1;1H<ESC>[2J_
+  \____
+E      \
+________|
+     o  |
+____(O)_/
+
+--- frame 009 ---
+<ESC>[1;1H<ESC>[2J__
++  \____
+UE      \
+_________|
+      o  |
+_____(O)_/
+
+--- frame 010 ---
+<ESC>[1;1H<ESC>[2J___
+ +  \____
+EUE      \
+__________|
+       o  |
+______(O)_/
+
+--- frame 011 ---
+<ESC>[1;1H<ESC>[2J____
+  +  \____
+UEUE      \
+___________|
+        o  |
+_______(O)_/
+
+--- frame 012 ---
+<ESC>[1;1H<ESC>[2J_____
++  +  \____
+QUEUE      \
+____________|
+         o  |
+________(O)_/
+
+--- frame 013 ---
+<ESC>[1;1H<ESC>[2J______
+ +  +  \____
+ QUEUE      \
+_____________|
+          o  |
+)________(O)_/
+
+--- frame 014 ---
+<ESC>[1;1H<ESC>[2J_______
+  +  +  \____
+  QUEUE      \
+______________|
+o          o  |
+O)________(O)_/
+
+--- frame 015 ---
+<ESC>[1;1H<ESC>[2J _______
+/  +  +  \____
+   QUEUE      \
+_______________|
+ o          o  |
+(O)________(O)_/
+
+--- frame 016 ---
+<ESC>[1;1H<ESC>[2J  _______
+ /  +  +  \____
+/   QUEUE      \
+________________|
+  o          o  |
+_(O)________(O)_/
+
+--- frame 017 ---
+<ESC>[1;1H<ESC>[2J   _______
+  /  +  +  \____
+ /   QUEUE      \
+/________________|
+|  o          o  |
+\_(O)________(O)_/
+
+--- frame 018 ---
+<ESC>[1;1H<ESC>[2J    _______
+   /  +  +  \____
+  /   QUEUE      \
+ /________________|
+ |  o          o  |
+ \_(O)________(O)_/
+
+--- frame 019 ---
+<ESC>[1;1H<ESC>[2J     _______
+    /  +  +  \____
+   /   QUEUE      \
+  /________________|
+  |  o          o  |
+F \_(O)________(O)_/
+
+--- frame 020 ---
+<ESC>[1;1H<ESC>[2J      _______
+     /  +  +  \____
+    /   QUEUE      \
+   /________________|
+   |  o          o  |
+Fi \_(O)________(O)_/
+
+--- frame 021 ---
+<ESC>[1;1H<ESC>[2J       _______
+      /  +  +  \____
+     /   QUEUE      \
+    /________________|
+    |  o          o  |
+Fo- \_(O)________(O)_/
+
+--- frame 022 ---
+<ESC>[1;1H<ESC>[2J        _______
+       /  +  +  \____
+      /   QUEUE      \
+     /________________|
+     |  o          o  |
+Fi-F \_(O)________(O)_/
+
+--- frame 023 ---
+<ESC>[1;1H<ESC>[2J         _______
+        /  +  +  \____
+       /   QUEUE      \
+      /________________|
+      |  o          o  |
+Fo-Fi \_(O)________(O)_/
+
+--- frame 024 ---
+<ESC>[1;1H<ESC>[2J          _______
+         /  +  +  \____
+        /   QUEUE      \
+       /________________|
+       |  o          o  |
+Fi-Fo- \_(O)________(O)_/
+
+--- frame 025 ---
+<ESC>[1;1H<ESC>[2J           _______
+          /  +  +  \____
+         /   QUEUE      \
+        /________________|
+        |  o          o  |
+Fo-Fi-F \_(O)________(O)_/
+
+--- frame 026 ---
+<ESC>[1;1H<ESC>[2J            _______
+           /  +  +  \____
+          /   QUEUE      \
+         /________________|
+         |  o          o  |
+Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 027 ---
+<ESC>[1;1H<ESC>[2J             _______
+            /  +  +  \____
+           /   QUEUE      \
+          /________________|
+          |  o          o  |
+Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 028 ---
+<ESC>[1;1H<ESC>[2J              _______
+             /  +  +  \____
+            /   QUEUE      \
+           /________________|
+           |  o          o  |
+Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 029 ---
+<ESC>[1;1H<ESC>[2J               _______
+              /  +  +  \____
+             /   QUEUE      \
+            /________________|
+            |  o          o  |
+Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 030 ---
+<ESC>[1;1H<ESC>[2J                _______
+               /  +  +  \____
+              /   QUEUE      \
+             /________________|
+             |  o          o  |
+Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 031 ---
+<ESC>[1;1H<ESC>[2J                 _______
+                /  +  +  \____
+               /   QUEUE      \
+              /________________|
+              |  o          o  |
+Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 032 ---
+<ESC>[1;1H<ESC>[2J                  _______
+                 /  +  +  \____
+                /   QUEUE      \
+               /________________|
+               |  o          o  |
+Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 033 ---
+<ESC>[1;1H<ESC>[2J                   _______
+                  /  +  +  \____
+                 /   QUEUE      \
+                /________________|
+                |  o          o  |
+Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 034 ---
+<ESC>[1;1H<ESC>[2J                    _______
+                   /  +  +  \____
+                  /   QUEUE      \
+                 /________________|
+                 |  o          o  |
+Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 035 ---
+<ESC>[1;1H<ESC>[2J                     _______
+                    /  +  +  \____
+                   /   QUEUE      \
+                  /________________|
+                  |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 036 ---
+<ESC>[1;1H<ESC>[2J                      _______
+                     /  +  +  \____
+                    /   QUEUE      \
+                   /________________|
+                   |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 037 ---
+<ESC>[1;1H<ESC>[2J                       _______
+                      /  +  +  \____
+                     /   QUEUE      \
+                    /________________|
+                    |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 038 ---
+<ESC>[1;1H<ESC>[2J                        _______
+                       /  +  +  \____
+                      /   QUEUE      \
+                     /________________|
+                     |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 039 ---
+<ESC>[1;1H<ESC>[2J                         _______
+                        /  +  +  \____
+                       /   QUEUE      \
+                      /________________|
+                      |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 040 ---
+<ESC>[1;1H<ESC>[2J                          _______
+                         /  +  +  \____
+                        /   QUEUE      \
+                       /________________|
+                       |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 041 ---
+<ESC>[1;1H<ESC>[2J                           _______
+                          /  +  +  \____
+                         /   QUEUE      \
+                        /________________|
+                        |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 042 ---
+<ESC>[1;1H<ESC>[2J                            _______
+                           /  +  +  \____
+                          /   QUEUE      \
+                         /________________|
+                         |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 043 ---
+<ESC>[1;1H<ESC>[2J                             _______
+                            /  +  +  \____
+                           /   QUEUE      \
+                          /________________|
+                          |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 044 ---
+<ESC>[1;1H<ESC>[2J                              _______
+                             /  +  +  \____
+                            /   QUEUE      \
+                           /________________|
+                           |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 045 ---
+<ESC>[1;1H<ESC>[2J                               _______
+                              /  +  +  \____
+                             /   QUEUE      \
+                            /________________|
+                            |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 046 ---
+<ESC>[1;1H<ESC>[2J                                _______
+                               /  +  +  \____
+                              /   QUEUE      \
+                             /________________|
+                             |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 047 ---
+<ESC>[1;1H<ESC>[2J                                 _______
+                                /  +  +  \____
+                               /   QUEUE      \
+                              /________________|
+                              |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 048 ---
+<ESC>[1;1H<ESC>[2J                                  _______
+                                 /  +  +  \____
+                                /   QUEUE      \
+                               /________________|
+                               |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 049 ---
+<ESC>[1;1H<ESC>[2J                                   _______
+                                  /  +  +  \____
+                                 /   QUEUE      \
+                                /________________|
+                                |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 050 ---
+<ESC>[1;1H<ESC>[2J                                    _______
+                                   /  +  +  \____
+                                  /   QUEUE      \
+                                 /________________|
+                                 |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 051 ---
+<ESC>[1;1H<ESC>[2J                                     _______
+                                    /  +  +  \____
+                                   /   QUEUE      \
+                                  /________________|
+                                  |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 052 ---
+<ESC>[1;1H<ESC>[2J                                      _______
+                                     /  +  +  \____
+                                    /   QUEUE      \
+                                   /________________|
+                                   |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 053 ---
+<ESC>[1;1H<ESC>[2J                                       _______
+                                      /  +  +  \____
+                                     /   QUEUE      \
+                                    /________________|
+                                    |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 054 ---
+<ESC>[1;1H<ESC>[2J                                        _______
+                                       /  +  +  \____
+                                      /   QUEUE      \
+                                     /________________|
+                                     |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 055 ---
+<ESC>[1;1H<ESC>[2J                                         _______
+                                        /  +  +  \____
+                                       /   QUEUE      \
+                                      /________________|
+                                      |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 056 ---
+<ESC>[1;1H<ESC>[2J                                          _______
+                                         /  +  +  \____
+                                        /   QUEUE      \
+                                       /________________|
+                                       |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 057 ---
+<ESC>[1;1H<ESC>[2J                                           _______
+                                          /  +  +  \____
+                                         /   QUEUE      \
+                                        /________________|
+                                        |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 058 ---
+<ESC>[1;1H<ESC>[2J                                            _______
+                                           /  +  +  \____
+                                          /   QUEUE      \
+                                         /________________|
+                                         |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 059 ---
+<ESC>[1;1H<ESC>[2J                                             _______
+                                            /  +  +  \____
+                                           /   QUEUE      \
+                                          /________________|
+                                          |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 060 ---
+<ESC>[1;1H<ESC>[2J                                              _______
+                                             /  +  +  \____
+                                            /   QUEUE      \
+                                           /________________|
+                                           |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 061 ---
+<ESC>[1;1H<ESC>[2J                                               _______
+                                              /  +  +  \____
+                                             /   QUEUE      \
+                                            /________________|
+                                            |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 062 ---
+<ESC>[1;1H<ESC>[2J                                                _______
+                                               /  +  +  \____
+                                              /   QUEUE      \
+                                             /________________|
+                                             |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 063 ---
+<ESC>[1;1H<ESC>[2J                                                 _______
+                                                /  +  +  \____
+                                               /   QUEUE      \
+                                              /________________|
+                                              |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 064 ---
+<ESC>[1;1H<ESC>[2J                                                  _______
+                                                 /  +  +  \____
+                                                /   QUEUE      \
+                                               /________________|
+                                               |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 065 ---
+<ESC>[1;1H<ESC>[2J                                                   _______
+                                                  /  +  +  \____
+                                                 /   QUEUE      \
+                                                /________________|
+                                                |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 066 ---
+<ESC>[1;1H<ESC>[2J                                                    _______
+                                                   /  +  +  \____
+                                                  /   QUEUE      \
+                                                 /________________|
+                                                 |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 067 ---
+<ESC>[1;1H<ESC>[2J                                                     _______
+                                                    /  +  +  \____
+                                                   /   QUEUE      \
+                                                  /________________|
+                                                  |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 068 ---
+<ESC>[1;1H<ESC>[2J                                                      _______
+                                                     /  +  +  \____
+                                                    /   QUEUE      \
+                                                   /________________|
+                                                   |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 069 ---
+<ESC>[1;1H<ESC>[2J                                                       _______
+                                                      /  +  +  \____
+                                                     /   QUEUE      \
+                                                    /________________|
+                                                    |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 070 ---
+<ESC>[1;1H<ESC>[2J                                                        _______
+                                                       /  +  +  \____
+                                                      /   QUEUE      \
+                                                     /________________|
+                                                     |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 071 ---
+<ESC>[1;1H<ESC>[2J                                                         _______
+                                                        /  +  +  \____
+                                                       /   QUEUE      \
+                                                      /________________|
+                                                      |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 072 ---
+<ESC>[1;1H<ESC>[2J                                                          _______
+                                                         /  +  +  \____
+                                                        /   QUEUE      \
+                                                       /________________|
+                                                       |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 073 ---
+<ESC>[1;1H<ESC>[2J                                                           _______
+                                                          /  +  +  \____
+                                                         /   QUEUE      \
+                                                        /________________|
+                                                        |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 074 ---
+<ESC>[1;1H<ESC>[2J                                                            _______
+                                                           /  +  +  \____
+                                                          /   QUEUE      \
+                                                         /________________|
+                                                         |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 075 ---
+<ESC>[1;1H<ESC>[2J                                                             _______
+                                                            /  +  +  \____
+                                                           /   QUEUE      \
+                                                          /________________|
+                                                          |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 076 ---
+<ESC>[1;1H<ESC>[2J                                                              _______
+                                                             /  +  +  \____
+                                                            /   QUEUE      \
+                                                           /________________|
+                                                           |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 077 ---
+<ESC>[1;1H<ESC>[2J                                                               _______
+                                                              /  +  +  \____
+                                                             /   QUEUE      \
+                                                            /________________|
+                                                            |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_/
+
+--- frame 078 ---
+<ESC>[1;1H<ESC>[2J                                                                _______
+                                                               /  +  +  \____
+                                                              /   QUEUE      \
+                                                             /________________|
+                                                             |  o          o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)_/
+
+--- frame 079 ---
+<ESC>[1;1H<ESC>[2J                                                                 _______
+                                                                /  +  +  \____
+                                                               /   QUEUE      \
+                                                              /________________|
+                                                              |  o          o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O)_/
+
+--- frame 080 ---
+<ESC>[1;1H<ESC>[2J                                                                  _______
+                                                                 /  +  +  \____
+                                                                /   QUEUE      \
+                                                               /________________
+                                                               |  o          o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(O)_
+
+--- frame 081 ---
+<ESC>[1;1H<ESC>[2J                                                                   _______
+                                                                  /  +  +  \____
+                                                                 /   QUEUE      
+                                                                /_______________
+                                                                |  o          o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________(O)
+
+--- frame 082 ---
+<ESC>[1;1H<ESC>[2J                                                                    _______
+                                                                   /  +  +  \___
+                                                                  /   QUEUE     
+                                                                 /______________
+                                                                 |  o          o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)________(O
+
+--- frame 083 ---
+<ESC>[1;1H<ESC>[2J                                                                     _______
+                                                                    /  +  +  \__
+                                                                   /   QUEUE    
+                                                                  /_____________
+                                                                  |  o          
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)________(
+
+--- frame 084 ---
+<ESC>[1;1H<ESC>[2J                                                                      _______
+                                                                     /  +  +  \_
+                                                                    /   QUEUE   
+                                                                   /____________
+                                                                   |  o         
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)________
+
+--- frame 085 ---
+<ESC>[1;1H<ESC>[2J                                                                       _______
+                                                                      /  +  +  \
+                                                                     /   QUEUE  
+                                                                    /___________
+                                                                    |  o        
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)_______
+
+--- frame 086 ---
+<ESC>[1;1H<ESC>[2J                                                                        _______
+                                                                       /  +  +  
+                                                                      /   QUEUE 
+                                                                     /__________
+                                                                     |  o       
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)______
+
+--- frame 087 ---
+<ESC>[1;1H<ESC>[2J                                                                         _______
+                                                                        /  +  + 
+                                                                       /   QUEUE
+                                                                      /_________
+                                                                      |  o      
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)_____
+
+--- frame 088 ---
+<ESC>[1;1H<ESC>[2J                                                                          ______
+                                                                         /  +  +
+                                                                        /   QUEU
+                                                                       /________
+                                                                       |  o     
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)____
+
+--- frame 089 ---
+<ESC>[1;1H<ESC>[2J                                                                           _____
+                                                                          /  +  
+                                                                         /   QUE
+                                                                        /_______
+                                                                        |  o    
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)___
+
+--- frame 090 ---
+<ESC>[1;1H<ESC>[2J                                                                            ____
+                                                                           /  + 
+                                                                          /   QU
+                                                                         /______
+                                                                         |  o   
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O)__
+
+--- frame 091 ---
+<ESC>[1;1H<ESC>[2J                                                                             ___
+                                                                            /  +
+                                                                           /   Q
+                                                                          /_____
+                                                                          |  o  
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(O)_
+
+--- frame 092 ---
+<ESC>[1;1H<ESC>[2J                                                                              __
+                                                                             /  
+                                                                            /   
+                                                                           /____
+                                                                           |  o 
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_(O)
+
+--- frame 093 ---
+<ESC>[1;1H<ESC>[2J                                                                               _
+                                                                              / 
+                                                                             /  
+                                                                            /___
+                                                                            |  o
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \_(O
+
+--- frame 094 ---
+<ESC>[1;1H<ESC>[2J                                                                                
+                                                                               /
+                                                                              / 
+                                                                             /__
+                                                                             |  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F \_(
+
+--- frame 095 ---
+<ESC>[1;1H<ESC>[2J                                                                                
+                                                                                
+                                                                               /
+                                                                              /_
+                                                                              | 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi \_
+
+--- frame 096 ---
+<ESC>[1;1H<ESC>[2J                                                                                
+                                                                                
+                                                                                
+                                                                               /
+                                                                               |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo- \
+
+--- frame 097 ---
+<ESC>[1;1H<ESC>[2J                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F
