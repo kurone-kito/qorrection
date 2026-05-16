@@ -177,6 +177,7 @@ pub(crate) struct ForwarderHandle {
     pub(crate) direction: Direction,
     pub(crate) join: JoinHandle<io::Result<ForwarderExit>>,
     cancel: Option<CancelHandle>,
+    cancel_wakes_read: bool,
 }
 
 impl ForwarderHandle {
@@ -184,6 +185,10 @@ impl ForwarderHandle {
         if let Some(cancel) = &self.cancel {
             cancel.cancel();
         }
+    }
+
+    pub(crate) fn cancel_wakes_read(&self) -> bool {
+        self.cancel_wakes_read
     }
 }
 
@@ -206,6 +211,7 @@ where
         direction,
         join,
         cancel: None,
+        cancel_wakes_read: false,
     }
 }
 
@@ -213,6 +219,7 @@ pub(crate) fn spawn_cancellable_forwarder<R, W>(
     direction: Direction,
     mut reader: CancellableReader<R>,
     mut writer: W,
+    cancel_wakes_read: bool,
 ) -> ForwarderHandle
 where
     R: Read + Send + 'static,
@@ -224,6 +231,7 @@ where
         direction,
         join,
         cancel: Some(cancel),
+        cancel_wakes_read,
     }
 }
 

@@ -132,6 +132,7 @@ fn start_io_pump_with_reader<HIn, HOut>(
     host_stdin: CancellableReader<HIn>,
     host_stdout: HOut,
     armed: bool,
+    host_cancel_wakes_read: bool,
 ) -> Result<IoPump>
 where
     HIn: Read + Send + 'static,
@@ -145,7 +146,12 @@ where
         input: _input,
     } = wire_trigger_io(armed, pty_writer, host_stdout);
 
-    let host_to_child = spawn_cancellable_forwarder(Direction::HostToChild, host_stdin, pty_writer);
+    let host_to_child = spawn_cancellable_forwarder(
+        Direction::HostToChild,
+        host_stdin,
+        pty_writer,
+        host_cancel_wakes_read,
+    );
     let child_to_host = spawn_forwarder(Direction::ChildToHost, pty_reader, host_stdout);
 
     Ok(IoPump {
@@ -171,6 +177,7 @@ where
         CancellableReader::new(host_stdin, host_cancel),
         host_stdout,
         armed,
+        false,
     )
 }
 
@@ -192,6 +199,7 @@ where
         CancellableReader::with_poll_fd(host_stdin, host_cancel, host_stdin_fd),
         host_stdout,
         armed,
+        true,
     )
 }
 

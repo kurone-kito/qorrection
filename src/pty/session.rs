@@ -52,10 +52,15 @@
 //!   parent process termination clean it up.
 //! - [`Deadlines::host_to_child_post_exit_budget`] is a short
 //!   bounded join window for the cancelled `HostToChild`
-//!   direction. Once cancellation is signalled there is no
-//!   useful user input left to deliver, so the budget only needs
-//!   to be long enough for the poll loop to observe the cancel
-//!   bit and exit cleanly instead of detaching immediately.
+//!   direction, but only when cancellation is known to wake the
+//!   blocked read (the unix pollable stdin path, or a test seam
+//!   that models the same behavior). Once cancellation is
+//!   signalled there is no useful user input left to deliver, so
+//!   the budget only needs to be long enough for the poll loop to
+//!   observe the cancel bit and exit cleanly instead of
+//!   detaching immediately. Non-wakeable readers retain the old
+//!   zero-budget detach path to avoid reintroducing a post-exit
+//!   delay or warning.
 
 use std::io;
 use std::process::ExitCode;
@@ -89,10 +94,12 @@ pub(crate) struct Deadlines {
     /// forwarder may still be writing to host stdout.
     pub forwarder_join_budget: Duration,
     /// Same as `forwarder_join_budget` but for the cancelled
-    /// `HostToChild` direction. Production keeps this short:
-    /// once the child has exited the host->child forwarder has no
-    /// useful work left, so the budget only needs to cover one
-    /// or two poll intervals of the cancellable read loop.
+    /// `HostToChild` direction when cancellation can wake the
+    /// blocked read. Production keeps this short: once the child
+    /// has exited the host->child forwarder has no useful work
+    /// left, so the budget only needs to cover one or two poll
+    /// intervals of the wakeable cancel loop. Non-wakeable
+    /// readers still detach with a zero budget.
     pub host_to_child_post_exit_budget: Duration,
     /// Sleep between successive `try_wait` ticks. Keeps the
     /// supervisor from busy-looping; small enough that signal
@@ -345,10 +352,12 @@ where
     // Phase 2: drain remaining forwarders within budget.
     if let Some(h) = h2c.take() {
         h.cancel();
-        h2c_result = Some(join_with_budget(
-            h,
-            deadlines.host_to_child_post_exit_budget,
-        ));
+        let budget = if h.cancel_wakes_read() {
+            deadlines.host_to_child_post_exit_budget
+        } else {
+            Duration::ZERO
+        };
+        h2c_result = Some(join_with_budget(h, budget));
     }
     if let Some(h) = c2h.take() {
         c2h_result = Some(join_with_budget(h, deadlines.forwarder_join_budget));
@@ -670,6 +679,7 @@ mod tests {
                 host_cancel,
             ),
             DiscardWriter,
+            true,
         );
         let c2h_in: Cursor<Vec<u8>> = Cursor::new(Vec::new());
         let c2h_out: Vec<u8> = Vec::new();
@@ -690,6 +700,43 @@ mod tests {
             },
             exited,
         )
+    }
+
+    /// Build a pump where `HostToChild` ignores cancellation once
+    /// its blocking read begins. This models the non-wakeable
+    /// fallback path used by non-Unix stdin.
+    fn nonwakeable_h2c_quiet_c2h_pump() -> IoPump {
+        struct ForeverReader;
+        impl io::Read for ForeverReader {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                loop {
+                    std::thread::park_timeout(Duration::from_secs(60));
+                }
+            }
+        }
+        struct DiscardWriter;
+        impl io::Write for DiscardWriter {
+            fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let host_cancel = CancelHandle::new();
+        let host_to_child = spawn_cancellable_forwarder(
+            Direction::HostToChild,
+            CancellableReader::new(ForeverReader, host_cancel),
+            DiscardWriter,
+            false,
+        );
+        let c2h_in: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let c2h_out: Vec<u8> = Vec::new();
+        let child_to_host = spawn_forwarder(Direction::ChildToHost, c2h_in, c2h_out);
+        IoPump {
+            host_to_child,
+            child_to_host,
+        }
     }
 
     /// Regression for chatgpt-codex/copilot reviewer finding
@@ -756,6 +803,30 @@ mod tests {
         assert!(
             elapsed < Duration::from_millis(500),
             "supervisor stalled on hung HostToChild: {elapsed:?}"
+        );
+    }
+
+    /// Regression for the accepted E-phase review on PR #125:
+    /// non-wakeable host stdin must retain the old zero-budget
+    /// detach path so non-Unix production builds do not wait the
+    /// short pollable-join budget and emit a spurious timeout
+    /// warning.
+    #[test]
+    fn production_deadlines_keep_zero_budget_for_nonwakeable_host_to_child() {
+        let mut deadlines = Deadlines::production();
+        deadlines.child_wait_deadline = Some(Duration::from_secs(2));
+        deadlines.wait_poll = Duration::from_millis(2);
+
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 0);
+        let start = Instant::now();
+        let code = run_pump_session_with(child, nonwakeable_h2c_quiet_c2h_pump(), deadlines)
+            .expect("clean exit with non-wakeable h2c must still be Ok");
+        let elapsed = start.elapsed();
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert!(
+            elapsed < Duration::from_millis(100),
+            "non-wakeable HostToChild should detach immediately: {elapsed:?}"
         );
     }
 
