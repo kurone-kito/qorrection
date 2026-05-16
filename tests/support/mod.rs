@@ -29,6 +29,12 @@ impl ArmedHelper {
     }
 
     /// Create a helper that writes deterministic plain stdout.
+    ///
+    /// Shared integration-test fixtures are compiled once per
+    /// `tests/*.rs` target, so some helpers are intentionally
+    /// unused in a given target even though other integration
+    /// tests exercise them.
+    #[allow(dead_code)]
     pub fn plain_stdout() -> Self {
         Self::from_scripts(
             "#!/bin/sh\nprintf 'plain-output\\n'\n",
