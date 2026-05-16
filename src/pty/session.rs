@@ -1086,13 +1086,12 @@ mod real_session {
     }
 
     fn supervisor_deadlines() -> Deadlines {
-        Deadlines {
-            child_wait_deadline: Some(WAIT_BUDGET),
-            forwarder_join_budget: JOIN_BUDGET,
-            host_to_child_post_exit_budget: JOIN_BUDGET,
-            wait_poll: WAIT_POLL,
-            post_kill_wait_budget: WAIT_BUDGET,
-        }
+        let mut deadlines = Deadlines::production();
+        deadlines.child_wait_deadline = Some(WAIT_BUDGET);
+        deadlines.forwarder_join_budget = JOIN_BUDGET;
+        deadlines.wait_poll = WAIT_POLL;
+        deadlines.post_kill_wait_budget = WAIT_BUDGET;
+        deadlines
     }
 
     /// Shared `Write` sink so the integration test can inspect
