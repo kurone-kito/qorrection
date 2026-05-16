@@ -54,7 +54,7 @@ impl<W> OutputArbiter<W> {
     }
 
     #[cfg(test)]
-    fn inner(&self) -> &W {
+    pub(crate) fn inner(&self) -> &W {
         &self.inner
     }
 

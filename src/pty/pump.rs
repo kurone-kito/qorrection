@@ -8,19 +8,22 @@
 //! supervisor that converges them with the child wait is owned
 //! by PR 4 (#33).
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 #[cfg(unix)]
 use std::os::fd::RawFd;
 
+use crate::anim::render::{draw_frame, render_plan, FRAME_DELAY};
 use crate::pty::forward::{
     spawn_cancellable_forwarder, spawn_forwarder, CancelHandle, CancellableReader, Direction,
     ForwarderHandle,
 };
 use crate::pty::spawn::SpawnedSession;
 use crate::trigger::{
-    input::{shared_input_pump, InputDetector},
+    input::{shared_input_pump, InputInterceptor},
     output::OutputArbiter,
+    parser::Outcome,
 };
 use crate::{Error, Result};
 
@@ -35,7 +38,7 @@ pub(crate) struct IoPump {
 }
 
 enum HostToChildWriter<W> {
-    Armed(InputDetector<W>),
+    Armed(InputInterceptor<W>),
     Passthrough(W),
 }
 
@@ -82,9 +85,116 @@ where
     }
 }
 
+struct SharedWriter<W> {
+    inner: Arc<Mutex<W>>,
+}
+
+impl<W> Clone for SharedWriter<W> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl<W> SharedWriter<W> {
+    fn new(inner: W) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(inner)),
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, W> {
+        match self.inner.lock() {
+            Ok(guard) => guard,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "shared host stdout mutex was poisoned; recovering writer"
+                );
+                err.into_inner()
+            }
+        }
+    }
+}
+
+impl<W> Write for SharedWriter<W>
+where
+    W: Write,
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let mut guard = self.lock();
+        guard.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut guard = self.lock();
+        guard.flush()
+    }
+}
+
+struct LockedPresentation<'a, W: Write> {
+    out: MutexGuard<'a, W>,
+}
+
+impl<'a, W> LockedPresentation<'a, W>
+where
+    W: Write,
+{
+    fn acquire(mut out: MutexGuard<'a, W>) -> Result<Self> {
+        crossterm::execute!(&mut *out, crossterm::terminal::EnterAlternateScreen)?;
+        if let Err(err) = crossterm::execute!(&mut *out, crossterm::cursor::Hide) {
+            let _ = crossterm::execute!(&mut *out, crossterm::terminal::LeaveAlternateScreen);
+            return Err(err.into());
+        }
+        Ok(Self { out })
+    }
+
+    fn writer(&mut self) -> &mut W {
+        &mut self.out
+    }
+}
+
+impl<W> Drop for LockedPresentation<'_, W>
+where
+    W: Write,
+{
+    fn drop(&mut self) {
+        let _ = crossterm::execute!(&mut *self.out, crossterm::cursor::Show);
+        let _ = crossterm::execute!(&mut *self.out, crossterm::terminal::LeaveAlternateScreen);
+    }
+}
+
+fn render_cols() -> u16 {
+    match crossterm::terminal::size() {
+        Ok((cols, _)) if cols > 0 => cols,
+        _ => 80,
+    }
+}
+
+fn render_animation<W>(host_stdout: &SharedWriter<W>, outcome: Outcome) -> io::Result<()>
+where
+    W: Write,
+{
+    let Some(plan) = render_plan(outcome, render_cols()) else {
+        return Ok(());
+    };
+    if plan.frames.is_empty() {
+        return Ok(());
+    }
+
+    let mut presentation =
+        LockedPresentation::acquire(host_stdout.lock()).map_err(io::Error::other)?;
+    for frame in &plan.frames {
+        draw_frame(presentation.writer(), frame).map_err(io::Error::other)?;
+        std::thread::sleep(FRAME_DELAY);
+    }
+    Ok(())
+}
+
 struct TriggerWiring<PtyW, HOut> {
     host_to_child: HostToChildWriter<PtyW>,
-    child_to_host: ChildToHostWriter<HOut>,
+    child_to_host: ChildToHostWriter<SharedWriter<HOut>>,
     input: Option<crate::trigger::input::SharedInputPump>,
 }
 
@@ -95,19 +205,28 @@ fn wire_trigger_io<PtyW, HOut>(
 ) -> TriggerWiring<PtyW, HOut>
 where
     PtyW: Write,
-    HOut: Write,
+    HOut: Write + Send + 'static,
 {
+    let shared_stdout = SharedWriter::new(host_stdout);
     if armed {
         let input = shared_input_pump();
+        let render_stdout = shared_stdout.clone();
         TriggerWiring {
-            host_to_child: HostToChildWriter::Armed(InputDetector::new(pty_writer, input.clone())),
-            child_to_host: ChildToHostWriter::Armed(OutputArbiter::new(host_stdout, input.clone())),
+            host_to_child: HostToChildWriter::Armed(InputInterceptor::new(
+                pty_writer,
+                input.clone(),
+                move |outcome| render_animation(&render_stdout, outcome),
+            )),
+            child_to_host: ChildToHostWriter::Armed(OutputArbiter::new(
+                shared_stdout,
+                input.clone(),
+            )),
             input: Some(input),
         }
     } else {
         TriggerWiring {
             host_to_child: HostToChildWriter::Passthrough(pty_writer),
-            child_to_host: ChildToHostWriter::Passthrough(host_stdout),
+            child_to_host: ChildToHostWriter::Passthrough(shared_stdout),
             input: None,
         }
     }
@@ -207,6 +326,7 @@ where
 mod tests {
     use super::*;
     use crate::trigger::parser::Outcome;
+    use std::{sync::mpsc, thread, time::Duration};
 
     const ENTER_ALT: &[u8] = b"\x1b[?1049h";
 
@@ -247,6 +367,32 @@ mod tests {
     }
 
     #[test]
+    fn armed_wiring_fires_animation_instead_of_forwarding_trigger_bytes() {
+        let mut wiring = wire_trigger_io(true, Vec::new(), Vec::new());
+
+        wiring.host_to_child.write_all(b":q\n").unwrap();
+
+        let HostToChildWriter::Armed(host) = &wiring.host_to_child else {
+            panic!("armed host path should use the trigger interceptor");
+        };
+        assert_eq!(
+            host.inner().as_slice(),
+            b"",
+            "fired trigger bytes must not reach the child PTY"
+        );
+
+        let ChildToHostWriter::Armed(child) = &wiring.child_to_host else {
+            panic!("armed child path should use the output arbiter");
+        };
+        let rendered = child.inner().lock();
+        let text = String::from_utf8_lossy(rendered.as_slice());
+        assert!(
+            text.contains("Fi-Fo") || text.contains("[QQ]") || text.contains("QUEUE"),
+            "expected renderer output on host stdout, got {text:?}"
+        );
+    }
+
+    #[test]
     fn disarmed_wiring_bypasses_trigger_state_entirely() {
         let mut wiring = wire_trigger_io(false, Vec::new(), Vec::new());
         assert!(matches!(
@@ -273,7 +419,37 @@ mod tests {
         let ChildToHostWriter::Passthrough(child_bytes) = wiring.child_to_host else {
             panic!("disarmed child path should remain a passthrough writer");
         };
-        assert_eq!(child_bytes, ENTER_ALT);
+        assert_eq!(child_bytes.lock().as_slice(), ENTER_ALT);
+    }
+
+    #[test]
+    fn shared_writer_blocks_other_handles_until_lock_is_released() {
+        let shared = SharedWriter::new(Vec::new());
+        let locked = shared.lock();
+        let mut writer = shared.clone();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+
+        let join = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            writer.write_all(b"child").unwrap();
+            done_tx.send(()).unwrap();
+        });
+
+        started_rx.recv().unwrap();
+        assert!(
+            done_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "child output should block while the renderer owns the lock"
+        );
+
+        drop(locked);
+
+        done_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("child output should resume once the lock is released");
+        join.join().unwrap();
+
+        assert_eq!(shared.lock().as_slice(), b"child");
     }
 }
 
