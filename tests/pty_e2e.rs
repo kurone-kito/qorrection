@@ -34,6 +34,37 @@ mod unix {
     }
 
     #[test]
+    fn q9_cat_passthrough_preserves_q_literal_when_command_is_not_armed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = q9();
+        command.arg("cat");
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        session.send_line(":q")?;
+        session.exp_string(":q")?;
+        session.send_control('d')?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => panic!("expected q9 cat to exit 0, got {other:?}"),
+        }
+
+        let normalized = remaining.replace("\r\n", "\n");
+        assert!(
+            normalized.contains(":q"),
+            "expected cat itself to echo a second :q literal, got {normalized:?}"
+        );
+        assert!(
+            !normalized.contains("[QQ]")
+                && !normalized.contains("Fi-Fo")
+                && !normalized.contains("QUEUE"),
+            "expected passthrough output without animation text, got {normalized:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn q9_sh_nonzero_exit_is_propagated() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = q9();
         command.args(["sh", "-c", "exit 7"]);
@@ -92,6 +123,13 @@ mod windows {
     #[test]
     #[ignore = "Windows ConPTY passthrough smoke is tracked by issue #65"]
     fn q9_cat_passthrough_echoes_input_and_exits_zero() {}
+
+    /// Windows ConPTY E2E coverage is tracked separately for
+    /// v0.1 because this suite depends on Unix-only `rexpect`.
+    /// Tracking issue: <https://github.com/kurone-kito/qorrection/issues/65>.
+    #[test]
+    #[ignore = "Windows ConPTY passthrough smoke is tracked by issue #65"]
+    fn q9_cat_passthrough_preserves_q_literal_when_command_is_not_armed() {}
 
     /// Windows ConPTY E2E coverage is tracked separately for
     /// v0.1 because this suite depends on Unix-only `rexpect`.
