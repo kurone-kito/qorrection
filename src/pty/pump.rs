@@ -31,7 +31,11 @@ use crate::trigger::{
 };
 use crate::{Error, Result};
 
-const RENDER_JOIN_SLACK: Duration = Duration::from_millis(250);
+// Hosted macOS runners spend noticeably longer than the nominal
+// 50 ms/frame on flush + scheduling overhead, so the post-exit
+// join budget needs extra slack to let an in-flight animation
+// restore the primary screen before the process tears down.
+const RENDER_JOIN_SLACK: Duration = Duration::from_secs(2);
 
 /// Owning bundle of the host↔child forwarder threads.
 ///
