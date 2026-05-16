@@ -65,6 +65,29 @@ mod unix {
     }
 
     #[test]
+    fn q9_cat_typed_ctrl_c_reaches_child_and_exits_130() -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = q9();
+        command.args(["sh", "-c", "printf 'READY\\n'; exec cat"]);
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        assert_eq!(session.read_line()?, "READY");
+        session.send_control('c')?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 130) => {}
+            other => panic!("expected q9 cat to surface SIGINT as exit 130, got {other:?}"),
+        }
+
+        let normalized = remaining.replace("\r\n", "\n");
+        assert!(
+            normalized.contains("child terminated by signal 2"),
+            "expected SIGINT diagnostic on PTY output, got {normalized:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn q9_sh_nonzero_exit_is_propagated() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = q9();
         command.args(["sh", "-c", "exit 7"]);
@@ -130,6 +153,13 @@ mod windows {
     #[test]
     #[ignore = "Windows ConPTY passthrough smoke is tracked by issue #65"]
     fn q9_cat_passthrough_preserves_q_literal_when_command_is_not_armed() {}
+
+    /// Windows ConPTY E2E coverage is tracked separately for
+    /// v0.1 because this suite depends on Unix-only `rexpect`.
+    /// Tracking issue: <https://github.com/kurone-kito/qorrection/issues/65>.
+    #[test]
+    #[ignore = "Windows ConPTY passthrough smoke is tracked by issue #65"]
+    fn q9_cat_typed_ctrl_c_reaches_child_and_exits_130() {}
 
     /// Windows ConPTY E2E coverage is tracked separately for
     /// v0.1 because this suite depends on Unix-only `rexpect`.
