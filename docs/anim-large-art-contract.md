@@ -91,9 +91,9 @@ embed in the shipped binary.
 
 - Assets must be original to this repository unless a later issue lands
   a separate, explicit license review path.
-- Assets must stay pure ASCII.
-- Assets must be embedded in the binary as source-controlled text
-  (`include_str!` or equivalent static string data).
+- All oversized assets must stay pure ASCII and live in the shipped
+  binary as source-controlled text (`include_str!` or equivalent static
+  string data).
 - Snapshot tests must assert the dimensions and contract-significant
   labels of any oversized asset before renderer integration lands.
 
