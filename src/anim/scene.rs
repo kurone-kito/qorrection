@@ -30,6 +30,16 @@ pub fn q(cols: u16) -> Vec<String> {
     sweep(car::STD, cols)
 }
 
+/// Build the compact 40-79 column ambulance scene.
+///
+/// This is the renderer's "small bucket" degrade path: when the
+/// terminal is wide enough for art but too narrow for the standard
+/// car, the animation keeps the same sweep / siren policy while
+/// switching to [`car::TINY`].
+pub fn tiny(cols: u16) -> Vec<String> {
+    sweep(car::TINY, cols)
+}
+
 /// Build the larger `:wq` ambulance scene.
 ///
 /// This timeline follows the same sweep / siren policy as [`q`]
@@ -49,6 +59,15 @@ pub fn wq(cols: u16) -> Vec<String> {
 /// multi-car convoy.
 pub fn bang(cols: u16) -> Vec<String> {
     parade(car::STD, cols, BANG_CARS)
+}
+
+/// Build the small-bucket `:q!` parade.
+///
+/// The renderer uses this when `40 <= cols < 80`: the trigger keeps
+/// its parade identity, but the body shrinks to [`car::TINY`] so the
+/// narrow viewport still gets a recognisably animated convoy.
+pub fn tiny_bang(cols: u16) -> Vec<String> {
+    parade(car::TINY, cols, BANG_CARS)
 }
 
 /// Sweep one ASCII asset across the visible width using the
