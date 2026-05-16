@@ -235,6 +235,12 @@ mod tests {
         found
     }
 
+    fn bang_x_zero_idx() -> usize {
+        let lines = car::lines(car::STD);
+        let (_, car_right) = visible_bounds(&lines);
+        ((BANG_CARS - 1) * car::max_width(car::STD)) + car_right
+    }
+
     fn wheel_row(frame: &str) -> &str {
         frame.rsplit('\n').next().unwrap()
     }
@@ -426,7 +432,7 @@ mod tests {
     fn bang_scene_contains_all_nine_queue_labels_when_fully_visible() {
         let convoy_width = BANG_CARS * car::max_width(car::STD);
         let scene = bang(convoy_width as u16);
-        let x_zero_idx = convoy_width - 1;
+        let x_zero_idx = bang_x_zero_idx();
         let frame = &scene[x_zero_idx];
         let label_positions = positions(label_row(frame), "QUEUE");
 
@@ -461,8 +467,9 @@ mod tests {
     fn bang_scene_moves_the_convoy_one_column_per_tick() {
         let convoy_width = BANG_CARS * car::max_width(car::STD);
         let scene = bang(convoy_width as u16 + 1);
-        let at_zero = positions(label_row(&scene[convoy_width - 1]), "QUEUE");
-        let at_one = positions(label_row(&scene[convoy_width]), "QUEUE");
+        let x_zero_idx = bang_x_zero_idx();
+        let at_zero = positions(label_row(&scene[x_zero_idx]), "QUEUE");
+        let at_one = positions(label_row(&scene[x_zero_idx + 1]), "QUEUE");
 
         assert_eq!(at_zero.len(), BANG_CARS);
         assert_eq!(at_one.len(), BANG_CARS);
