@@ -10,9 +10,7 @@ mod support;
 mod unix {
     use super::support;
     use rexpect::process::wait::WaitStatus;
-    use rexpect::session::{spawn_command, PtySession};
-    use std::io;
-    use std::os::fd::AsRawFd;
+    use rexpect::session::spawn_command;
     use std::process::Command;
 
     // The standard `:q` sweep scales linearly with the host PTY
@@ -34,24 +32,16 @@ mod unix {
         command
     }
 
-    fn set_pty_size(session: &PtySession, cols: u16, rows: u16) -> io::Result<()> {
-        let winsize = libc::winsize {
-            ws_row: rows,
-            ws_col: cols,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
-        };
-
-        // SAFETY: `session.process.pty` owns a live PTY master FD
-        // for this rexpect session, and `winsize` is a valid
-        // stack-allocated `libc::winsize` for `TIOCSWINSZ`.
-        let rc =
-            unsafe { libc::ioctl(session.process.pty.as_raw_fd(), libc::TIOCSWINSZ, &winsize) };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(io::Error::last_os_error())
-        }
+    fn q9_with_tty_size(cols: u16, rows: u16) -> Command {
+        let mut command = Command::new("sh");
+        let script = format!("stty cols {cols} rows {rows} && exec \"$0\" \"$@\"");
+        // Resize the rexpect-controlled PTY from inside the shell
+        // so the same setup works on Linux and macOS; direct
+        // `TIOCSWINSZ` on rexpect's master FD returns ENOTTY on
+        // the hosted macOS runners.
+        command.arg("-c").arg(script).arg(env!("CARGO_BIN_EXE_q9"));
+        command.env_remove("QORRECTION_LOG");
+        command
     }
 
     #[test]
@@ -162,11 +152,10 @@ mod unix {
     #[test]
     fn q9_armed_helper_wq_shows_418_label() -> Result<(), Box<dyn std::error::Error>> {
         let helper = support::ArmedHelper::echo_stdin();
-        let mut command = q9();
+        let mut command = q9_with_tty_size(LARGE_WQ_COLS, PTY_ROWS);
         command.env("PATH", helper.path()).arg(helper.command());
 
         let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
-        set_pty_size(&session, LARGE_WQ_COLS, PTY_ROWS)?;
         session.send_line(":wq")?;
 
         let _before_animation = session.exp_string("\u{1b}[?1049h")?;
