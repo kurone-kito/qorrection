@@ -13,10 +13,13 @@ mod unix {
     use rexpect::session::spawn_command;
     use std::process::Command;
 
-    // The standard `:q` sweep at the default PTY width renders
-    // for roughly five seconds (about 100 frames × 50ms), so the
-    // rexpect timeout needs comfortable headroom for slower CI.
-    const TIMEOUT_MS: u64 = 10_000;
+    // The standard `:q` sweep scales linearly with the host PTY
+    // width that rexpect exposes. Some hosted runners present a
+    // much wider terminal than the local 80-col default, which
+    // stretches the full animation past ten seconds. Keep enough
+    // headroom that CI width differences do not turn the E2E
+    // assertion into a timeout race.
+    const TIMEOUT_MS: u64 = 30_000;
 
     fn q9() -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_q9"));
