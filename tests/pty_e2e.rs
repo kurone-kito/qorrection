@@ -10,7 +10,9 @@ mod support;
 mod unix {
     use super::support;
     use rexpect::process::wait::WaitStatus;
-    use rexpect::session::spawn_command;
+    use rexpect::session::{spawn_command, PtySession};
+    use std::io;
+    use std::os::fd::AsRawFd;
     use std::process::Command;
 
     // The standard `:q` sweep scales linearly with the host PTY
@@ -20,6 +22,8 @@ mod unix {
     // headroom that CI width differences do not turn the E2E
     // assertion into a timeout race.
     const TIMEOUT_MS: u64 = 30_000;
+    const LARGE_WQ_COLS: u16 = 120;
+    const PTY_ROWS: u16 = 24;
 
     fn q9() -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_q9"));
@@ -28,6 +32,26 @@ mod unix {
         // environment on developer machines or CI runners.
         command.env_remove("QORRECTION_LOG");
         command
+    }
+
+    fn set_pty_size(session: &PtySession, cols: u16, rows: u16) -> io::Result<()> {
+        let winsize = libc::winsize {
+            ws_row: rows,
+            ws_col: cols,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+
+        // SAFETY: `session.process.pty` owns a live PTY master FD
+        // for this rexpect session, and `winsize` is a valid
+        // stack-allocated `libc::winsize` for `TIOCSWINSZ`.
+        let rc =
+            unsafe { libc::ioctl(session.process.pty.as_raw_fd(), libc::TIOCSWINSZ, &winsize) };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
     }
 
     #[test]
@@ -131,6 +155,57 @@ mod unix {
         Ok(())
     }
 
+    /// Issue #54 E2E coverage: when an allowlisted child is
+    /// armed, typing `:wq` on a 120-column PTY must render the
+    /// large scene that carries the spec-locked 418 label while
+    /// still suppressing the trigger from child stdin.
+    #[test]
+    fn q9_armed_helper_wq_shows_418_label() -> Result<(), Box<dyn std::error::Error>> {
+        let helper = support::ArmedHelper::echo_stdin();
+        let mut command = q9();
+        command.env("PATH", helper.path()).arg(helper.command());
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        set_pty_size(&session, LARGE_WQ_COLS, PTY_ROWS)?;
+        session.send_line(":wq")?;
+
+        let _before_animation = session.exp_string("\u{1b}[?1049h")?;
+        let animation = session.exp_string("\u{1b}[?1049l")?;
+        let normalized_animation = animation.replace("\r\n", "\n");
+        assert!(
+            normalized_animation.contains("\u{1b}[2J"),
+            "expected animation to draw at least one frame, got {normalized_animation:?}"
+        );
+        assert!(
+            normalized_animation.contains("WRITE QUEUE"),
+            "expected the large :wq scene banner, got {normalized_animation:?}"
+        );
+        assert!(
+            normalized_animation.contains("418 I'm an AI agent"),
+            "expected the large :wq scene to carry the 418 label, got {normalized_animation:?}"
+        );
+
+        session.send_line("still-here")?;
+        session.exp_string("still-here")?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => panic!("expected armed helper to exit 0 after follow-up input, got {other:?}"),
+        }
+
+        let normalized_remaining = remaining.replace("\r\n", "\n");
+        assert!(
+            normalized_remaining.contains("still-here"),
+            "expected helper stdout to echo the follow-up line after animation, got {normalized_remaining:?}"
+        );
+        assert!(
+            !normalized_remaining.contains(":wq"),
+            "expected swallowed trigger to stay out of helper output, got {normalized_remaining:?}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn q9_cat_typed_ctrl_c_reaches_child_and_exits_130() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = q9();
@@ -228,6 +303,14 @@ mod windows {
     #[test]
     #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
     fn q9_armed_helper_intercepts_q_and_keeps_child_alive() {}
+
+    /// Windows ConPTY trigger-animation E2E for the large `:wq`
+    /// 418 scene is tracked separately for v0.1 because this
+    /// suite depends on Unix-only `rexpect`.
+    /// Tracking issue: <https://github.com/kurone-kito/qorrection/issues/65>.
+    #[test]
+    #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
+    fn q9_armed_helper_wq_shows_418_label() {}
 
     /// Windows ConPTY E2E coverage is tracked separately for
     /// v0.1 because this suite depends on Unix-only `rexpect`.
