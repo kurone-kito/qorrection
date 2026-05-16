@@ -51,6 +51,9 @@ mod spawn;
 use std::ffi::OsString;
 use std::process::{Command, ExitCode};
 
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
+
 use crate::{
     term::{detect, RawGuard, TerminalCaps},
     Error, Result,
@@ -161,6 +164,19 @@ fn default_body(armed: bool, command: &OsString, args: &[OsString]) -> Result<Ex
     // disarmed once `run_pump_session` takes over (it installs
     // its own internal `KillOnDropGuard`).
     let mut kill_guard = session::KillOnDropGuard::armed(session.child.clone_killer());
+    #[cfg(unix)]
+    let pump = {
+        let host_stdin = std::io::stdin();
+        let host_stdin_fd = host_stdin.as_raw_fd();
+        pump::start_io_pump_pollable(
+            &mut session,
+            host_stdin,
+            std::io::stdout(),
+            armed,
+            host_stdin_fd,
+        )?
+    };
+    #[cfg(not(unix))]
     let pump = pump::start_io_pump(&mut session, std::io::stdin(), std::io::stdout(), armed)?;
     kill_guard.disarm();
     session::run_pump_session(session, pump)

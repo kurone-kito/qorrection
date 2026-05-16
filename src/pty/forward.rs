@@ -14,9 +14,18 @@
 //! [`super::pump`].
 
 use std::io::{self, Read, Write};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
+#[cfg(unix)]
+use std::os::fd::RawFd;
 
 const BUF_LEN: usize = 8 * 1024;
+const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Direction tag carried in [`ForwarderHandle`] so PR 4's
 /// supervisor can attribute join failures to the right pipe.
@@ -41,6 +50,124 @@ pub(crate) enum ForwarderExit {
     WriterClosed { bytes: u64 },
 }
 
+#[derive(Clone, Default)]
+pub(crate) struct CancelHandle {
+    inner: Arc<AtomicBool>,
+}
+
+impl CancelHandle {
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.inner.store(true, Ordering::SeqCst);
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.inner.load(Ordering::SeqCst)
+    }
+}
+
+pub(crate) struct CancellableReader<R> {
+    inner: R,
+    cancel: CancelHandle,
+    #[cfg(unix)]
+    poll_fd: Option<RawFd>,
+}
+
+impl<R> CancellableReader<R> {
+    #[cfg(any(not(unix), test))]
+    pub(crate) fn new(inner: R, cancel: CancelHandle) -> Self {
+        // Cooperative fallback: callers that cannot surface a
+        // pollable fd still get a pre-read cancel check, but an
+        // already-blocking `inner.read()` remains up to the
+        // wrapped reader to break out of.
+        Self {
+            inner,
+            cancel,
+            #[cfg(unix)]
+            poll_fd: None,
+        }
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn with_poll_fd(inner: R, cancel: CancelHandle, poll_fd: RawFd) -> Self {
+        // Production unix path: poll the real host-stdin fd in
+        // short intervals so post-exit cancellation can wake a
+        // forwarder that would otherwise sit in a blocking read.
+        Self {
+            inner,
+            cancel,
+            poll_fd: Some(poll_fd),
+        }
+    }
+
+    fn cancel_handle(&self) -> CancelHandle {
+        self.cancel.clone()
+    }
+
+    #[cfg(unix)]
+    fn poll_readable(&self, poll_fd: RawFd) -> io::Result<()> {
+        loop {
+            if self.cancel.is_cancelled() {
+                return Ok(());
+            }
+            let mut fd = libc::pollfd {
+                fd: poll_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let timeout_ms = CANCEL_POLL_INTERVAL.as_millis() as libc::c_int;
+            // SAFETY: `fd` points to a valid stack-allocated `pollfd`
+            // for the duration of the call, `nfds` matches that single
+            // entry, and `timeout_ms` is a bounded integer millisecond
+            // timeout. `poll_fd` is borrowed only for readiness checks;
+            // the actual read stays on `self.inner`.
+            let rc = unsafe { libc::poll(&mut fd, 1, timeout_ms) };
+            if rc < 0 {
+                let err = io::Error::last_os_error();
+                if err.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(err);
+            }
+            if rc == 0 {
+                continue;
+            }
+            if (fd.revents & libc::POLLNVAL) != 0 {
+                return Err(io::Error::other("cancellable reader poll saw invalid fd"));
+            }
+            if (fd.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR)) != 0 {
+                return Ok(());
+            }
+        }
+    }
+}
+
+impl<R> Read for CancellableReader<R>
+where
+    R: Read,
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        #[cfg(unix)]
+        if let Some(poll_fd) = self.poll_fd {
+            self.poll_readable(poll_fd)?;
+            if self.cancel.is_cancelled() {
+                return Ok(0);
+            }
+            return self.inner.read(buf);
+        }
+        if self.cancel.is_cancelled() {
+            return Ok(0);
+        }
+        self.inner.read(buf)
+    }
+}
+
 /// A spawned forwarder thread plus its direction tag.
 ///
 /// The thread keeps running until [`ForwarderExit`] is
@@ -49,6 +176,15 @@ pub(crate) enum ForwarderExit {
 pub(crate) struct ForwarderHandle {
     pub(crate) direction: Direction,
     pub(crate) join: JoinHandle<io::Result<ForwarderExit>>,
+    cancel: Option<CancelHandle>,
+}
+
+impl ForwarderHandle {
+    pub(crate) fn cancel(&self) {
+        if let Some(cancel) = &self.cancel {
+            cancel.cancel();
+        }
+    }
 }
 
 /// Spawn a thread that copies bytes from `reader` into
@@ -66,7 +202,29 @@ where
     W: Write + Send + 'static,
 {
     let join = thread::spawn(move || run_forwarder(&mut reader, &mut writer));
-    ForwarderHandle { direction, join }
+    ForwarderHandle {
+        direction,
+        join,
+        cancel: None,
+    }
+}
+
+pub(crate) fn spawn_cancellable_forwarder<R, W>(
+    direction: Direction,
+    mut reader: CancellableReader<R>,
+    mut writer: W,
+) -> ForwarderHandle
+where
+    R: Read + Send + 'static,
+    W: Write + Send + 'static,
+{
+    let cancel = reader.cancel_handle();
+    let join = thread::spawn(move || run_forwarder(&mut reader, &mut writer));
+    ForwarderHandle {
+        direction,
+        join,
+        cancel: Some(cancel),
+    }
 }
 
 fn run_forwarder<R, W>(reader: &mut R, writer: &mut W) -> io::Result<ForwarderExit>
