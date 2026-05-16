@@ -166,6 +166,24 @@ mod tests {
         },
     };
 
+    fn assert_render_plan(
+        outcome: Outcome,
+        cols: u16,
+        expected_kind: PlanKind,
+        expected_frames: Vec<String>,
+    ) {
+        let plan = render_plan(outcome, cols).unwrap();
+
+        assert_eq!(
+            plan.kind, expected_kind,
+            "{outcome:?} at {cols} cols chose an unexpected plan kind"
+        );
+        assert_eq!(
+            plan.frames, expected_frames,
+            "{outcome:?} at {cols} cols chose unexpected frames"
+        );
+    }
+
     #[test]
     fn render_plan_returns_none_when_no_trigger_fired() {
         assert_eq!(render_plan(Outcome::None, 120), None);
@@ -217,6 +235,54 @@ mod tests {
             render_plan(Outcome::QBang, 140).unwrap().kind,
             PlanKind::Bang
         );
+    }
+
+    #[test]
+    fn render_plan_covers_q_width_boundaries() {
+        assert_render_plan(
+            Outcome::Q,
+            39,
+            PlanKind::Fallback,
+            vec![fallback::fallback(fallback::Trigger::Q).to_string()],
+        );
+        assert_render_plan(Outcome::Q, 40, PlanKind::Tiny, scene::tiny(40));
+        assert_render_plan(Outcome::Q, 79, PlanKind::Tiny, scene::tiny(79));
+        assert_render_plan(Outcome::Q, 80, PlanKind::Q, scene::q(80));
+        assert_render_plan(Outcome::Q, 119, PlanKind::Q, scene::q(119));
+        assert_render_plan(Outcome::Q, 120, PlanKind::Q, scene::q(120));
+        assert_render_plan(Outcome::Q, 140, PlanKind::Q, scene::q(140));
+    }
+
+    #[test]
+    fn render_plan_covers_wq_width_boundaries() {
+        assert_render_plan(
+            Outcome::Wq,
+            39,
+            PlanKind::Fallback,
+            vec![fallback::fallback(fallback::Trigger::Wq).to_string()],
+        );
+        assert_render_plan(Outcome::Wq, 40, PlanKind::Tiny, scene::tiny(40));
+        assert_render_plan(Outcome::Wq, 79, PlanKind::Tiny, scene::tiny(79));
+        assert_render_plan(Outcome::Wq, 80, PlanKind::Q, scene::q(80));
+        assert_render_plan(Outcome::Wq, 119, PlanKind::Q, scene::q(119));
+        assert_render_plan(Outcome::Wq, 120, PlanKind::Wq, scene::wq(120));
+        assert_render_plan(Outcome::Wq, 140, PlanKind::Wq, scene::wq(140));
+    }
+
+    #[test]
+    fn render_plan_covers_bang_width_boundaries() {
+        assert_render_plan(
+            Outcome::QBang,
+            39,
+            PlanKind::Fallback,
+            vec![fallback::fallback(fallback::Trigger::Bang).to_string()],
+        );
+        assert_render_plan(Outcome::QBang, 40, PlanKind::TinyBang, scene::tiny_bang(40));
+        assert_render_plan(Outcome::QBang, 79, PlanKind::TinyBang, scene::tiny_bang(79));
+        assert_render_plan(Outcome::QBang, 80, PlanKind::Bang, scene::bang(80));
+        assert_render_plan(Outcome::QBang, 119, PlanKind::Bang, scene::bang(119));
+        assert_render_plan(Outcome::QBang, 120, PlanKind::Bang, scene::bang(120));
+        assert_render_plan(Outcome::QBang, 140, PlanKind::Bang, scene::bang(140));
     }
 
     #[test]
