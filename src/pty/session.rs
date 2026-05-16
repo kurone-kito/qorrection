@@ -52,15 +52,16 @@
 //!   parent process termination clean it up.
 //! - [`Deadlines::host_to_child_post_exit_budget`] is a short
 //!   bounded join window for the cancelled `HostToChild`
-//!   direction, but only when cancellation is known to wake the
-//!   blocked read (the unix pollable stdin path, or a test seam
-//!   that models the same behavior). Once cancellation is
-//!   signalled there is no useful user input left to deliver, so
-//!   the budget only needs to be long enough for the poll loop to
-//!   observe the cancel bit and exit cleanly instead of
-//!   detaching immediately. Non-wakeable readers retain the old
-//!   zero-budget detach path to avoid reintroducing a post-exit
-//!   delay or warning.
+//!   direction when cancellation is known to wake the blocked
+//!   read (the unix pollable stdin path, or a test seam that
+//!   models the same behavior). Once cancellation is signalled
+//!   there is no useful user input left to deliver, so the budget
+//!   only needs to be long enough for the poll loop to observe
+//!   the cancel bit and exit cleanly instead of detaching
+//!   immediately. Non-wakeable readers still detach with a zero
+//!   base budget once no trigger animation is in flight, but an
+//!   in-progress render now extends the join window long enough
+//!   to restore the primary screen before teardown.
 
 use std::io;
 use std::process::ExitCode;
@@ -99,7 +100,9 @@ pub(crate) struct Deadlines {
     /// has exited the host->child forwarder has no useful work
     /// left, so the budget only needs to cover one or two poll
     /// intervals of the wakeable cancel loop. Non-wakeable
-    /// readers still detach with a zero budget.
+    /// readers still use a zero base budget unless the shared
+    /// render-progress counter says the forwarder is finishing an
+    /// in-flight trigger animation.
     pub host_to_child_post_exit_budget: Duration,
     /// Sleep between successive `try_wait` ticks. Keeps the
     /// supervisor from busy-looping; small enough that signal
@@ -353,14 +356,15 @@ where
     // Phase 2: drain remaining forwarders within budget.
     if let Some(h) = h2c.take() {
         h.cancel();
-        let budget = if h.cancel_wakes_read() {
-            IoPump::host_to_child_post_exit_budget(
-                host_to_child_render_progress.as_ref(),
-                deadlines.host_to_child_post_exit_budget,
-            )
+        let base_budget = if h.cancel_wakes_read() {
+            deadlines.host_to_child_post_exit_budget
         } else {
             Duration::ZERO
         };
+        let budget = IoPump::host_to_child_post_exit_budget(
+            host_to_child_render_progress.as_ref(),
+            base_budget,
+        );
         h2c_result = Some(join_with_budget(h, budget));
     }
     if let Some(h) = c2h.take() {
@@ -816,9 +820,9 @@ mod tests {
 
     /// Regression for the accepted E-phase review on PR #125:
     /// non-wakeable host stdin must retain the old zero-budget
-    /// detach path so non-Unix production builds do not wait the
-    /// short pollable-join budget and emit a spurious timeout
-    /// warning.
+    /// detach path when no render is in flight so non-Unix
+    /// production builds do not wait the short pollable-join
+    /// budget and emit a spurious timeout warning.
     #[test]
     fn production_deadlines_keep_zero_budget_for_nonwakeable_host_to_child() {
         let mut deadlines = Deadlines::production();
@@ -835,6 +839,97 @@ mod tests {
         assert!(
             elapsed < Duration::from_millis(100),
             "non-wakeable HostToChild should detach immediately: {elapsed:?}"
+        );
+    }
+
+    /// Regression for PR #134 / issue #57: a non-wakeable
+    /// HostToChild reader may already be inside `read()` while
+    /// also presenting a trigger animation. Even though
+    /// cancellation cannot wake that read, the supervisor still
+    /// needs to honor the render-progress budget long enough for
+    /// the in-flight animation to restore the primary screen
+    /// before returning.
+    #[test]
+    fn production_deadlines_wait_for_inflight_nonwakeable_render() {
+        struct DelayedReader {
+            delay: Duration,
+            started: Arc<AtomicBool>,
+            exited: Arc<AtomicBool>,
+        }
+        impl io::Read for DelayedReader {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                self.started.store(true, Ordering::SeqCst);
+                std::thread::sleep(self.delay);
+                self.exited.store(true, Ordering::SeqCst);
+                Ok(0)
+            }
+        }
+        struct DiscardWriter;
+        impl io::Write for DiscardWriter {
+            fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut deadlines = Deadlines::production();
+        deadlines.child_wait_deadline = Some(Duration::from_secs(2));
+        deadlines.wait_poll = Duration::from_millis(2);
+
+        let host_cancel = CancelHandle::new();
+        let started = Arc::new(AtomicBool::new(false));
+        let exited = Arc::new(AtomicBool::new(false));
+        let host_to_child = spawn_cancellable_forwarder(
+            Direction::HostToChild,
+            CancellableReader::new(
+                DelayedReader {
+                    delay: Duration::from_millis(100),
+                    started: Arc::clone(&started),
+                    exited: Arc::clone(&exited),
+                },
+                host_cancel,
+            ),
+            DiscardWriter,
+            false,
+        );
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !started.load(Ordering::SeqCst) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            started.load(Ordering::SeqCst),
+            "host->child forwarder did not enter read() within the wait budget"
+        );
+
+        let c2h_in: Cursor<Vec<u8>> = Cursor::new(Vec::new());
+        let c2h_out: Vec<u8> = Vec::new();
+        let child_to_host = spawn_forwarder(Direction::ChildToHost, c2h_in, c2h_out);
+        let pump = IoPump {
+            host_to_child,
+            child_to_host,
+            host_to_child_render_progress: Some(Arc::new(AtomicUsize::new(1))),
+        };
+
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 0);
+        let start = Instant::now();
+        let code = run_pump_session_with(child, pump, deadlines)
+            .expect("clean exit with in-flight non-wakeable render must still be Ok");
+        let elapsed = start.elapsed();
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert!(
+            exited.load(Ordering::SeqCst),
+            "supervisor should wait for the in-flight non-wakeable render to finish"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(80),
+            "supervisor detached before the in-flight render finished: {elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "supervisor should wait only for the in-flight render, not the full budget: {elapsed:?}"
         );
     }
 

@@ -31,10 +31,15 @@ use crate::trigger::{
 };
 use crate::{Error, Result};
 
-// Hosted macOS runners spend noticeably longer than the nominal
-// 50 ms/frame on flush + scheduling overhead, so the post-exit
-// join budget needs extra slack to let an in-flight animation
-// restore the primary screen before the process tears down.
+// Hosted macOS runners can spend roughly one extra 50 ms tick
+// per frame on draw/flush scheduling beyond the nominal hold
+// delay, so budget each remaining frame as "draw + hold" rather
+// than "hold only" when the supervisor waits for an in-flight
+// animation to restore the primary screen.
+const RENDER_FRAME_BUDGET_MULTIPLIER: u32 = 2;
+// Even after the last frame draw returns, give the renderer a
+// little extra wall-clock slack to run the terminal-guard drop
+// and flush the leave-alt-screen sequence on contended CI hosts.
 const RENDER_JOIN_SLACK: Duration = Duration::from_secs(2);
 
 /// Owning bundle of the host↔child forwarder threads.
@@ -75,9 +80,11 @@ impl IoPump {
             return base;
         }
 
-        let frames_remaining = u32::try_from(frames_remaining).unwrap_or(u32::MAX);
+        let frame_budget_units =
+            frames_remaining.saturating_mul(RENDER_FRAME_BUDGET_MULTIPLIER as usize);
+        let frame_budget_units = u32::try_from(frame_budget_units).unwrap_or(u32::MAX);
         let render_budget = FRAME_DELAY
-            .checked_mul(frames_remaining)
+            .checked_mul(frame_budget_units)
             .unwrap_or(Duration::from_secs(60))
             + RENDER_JOIN_SLACK;
         base.max(render_budget)
@@ -493,6 +500,21 @@ mod tests {
             panic!("disarmed child path should remain a passthrough writer");
         };
         assert_eq!(child_bytes.lock().as_slice(), ENTER_ALT);
+    }
+
+    #[test]
+    fn render_progress_budget_uses_frame_overhead_from_zero_base() {
+        let progress = Arc::new(AtomicUsize::new(3));
+
+        let budget = IoPump::host_to_child_post_exit_budget(Some(&progress), Duration::ZERO);
+
+        assert_eq!(
+            budget,
+            FRAME_DELAY
+                .checked_mul(3 * RENDER_FRAME_BUDGET_MULTIPLIER)
+                .expect("small test multiplier should fit")
+                + RENDER_JOIN_SLACK
+        );
     }
 
     #[test]
