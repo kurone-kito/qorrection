@@ -28,6 +28,85 @@ pub(crate) struct IoPump {
     pub(crate) child_to_host: ForwarderHandle,
 }
 
+enum HostToChildWriter<W> {
+    Armed(InputDetector<W>),
+    Passthrough(W),
+}
+
+impl<W> Write for HostToChildWriter<W>
+where
+    W: Write,
+{
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Armed(writer) => writer.write(buf),
+            Self::Passthrough(writer) => writer.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Armed(writer) => writer.flush(),
+            Self::Passthrough(writer) => writer.flush(),
+        }
+    }
+}
+
+enum ChildToHostWriter<W> {
+    Armed(OutputArbiter<W>),
+    Passthrough(W),
+}
+
+impl<W> Write for ChildToHostWriter<W>
+where
+    W: Write,
+{
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Armed(writer) => writer.write(buf),
+            Self::Passthrough(writer) => writer.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Armed(writer) => writer.flush(),
+            Self::Passthrough(writer) => writer.flush(),
+        }
+    }
+}
+
+struct TriggerWiring<PtyW, HOut> {
+    host_to_child: HostToChildWriter<PtyW>,
+    child_to_host: ChildToHostWriter<HOut>,
+    input: Option<crate::trigger::input::SharedInputPump>,
+}
+
+fn wire_trigger_io<PtyW, HOut>(
+    armed: bool,
+    pty_writer: PtyW,
+    host_stdout: HOut,
+) -> TriggerWiring<PtyW, HOut>
+where
+    PtyW: Write,
+    HOut: Write,
+{
+    if armed {
+        let input = shared_input_pump();
+        TriggerWiring {
+            host_to_child: HostToChildWriter::Armed(InputDetector::new(pty_writer, input.clone())),
+            child_to_host: ChildToHostWriter::Armed(OutputArbiter::new(host_stdout, input.clone())),
+            input: Some(input),
+        }
+    } else {
+        TriggerWiring {
+            host_to_child: HostToChildWriter::Passthrough(pty_writer),
+            child_to_host: ChildToHostWriter::Passthrough(host_stdout),
+            input: None,
+        }
+    }
+}
+
 /// Wire host stdio onto a live `SpawnedSession` and spawn both
 /// forwarder threads.
 ///
@@ -46,6 +125,7 @@ pub(crate) fn start_io_pump<HIn, HOut>(
     session: &mut SpawnedSession,
     host_stdin: HIn,
     host_stdout: HOut,
+    armed: bool,
 ) -> Result<IoPump>
 where
     HIn: Read + Send + 'static,
@@ -53,9 +133,11 @@ where
 {
     let pty_reader = session.master.try_clone_reader().map_err(Error::Pty)?;
     let pty_writer = session.master.take_writer().map_err(Error::Pty)?;
-    let trigger_input = shared_input_pump();
-    let pty_writer = InputDetector::new(pty_writer, trigger_input.clone());
-    let host_stdout = OutputArbiter::new(host_stdout, trigger_input);
+    let TriggerWiring {
+        host_to_child: pty_writer,
+        child_to_host: host_stdout,
+        input: _input,
+    } = wire_trigger_io(armed, pty_writer, host_stdout);
 
     let host_to_child = spawn_forwarder(Direction::HostToChild, host_stdin, pty_writer);
     let child_to_host = spawn_forwarder(Direction::ChildToHost, pty_reader, host_stdout);
@@ -64,6 +146,80 @@ where
         host_to_child,
         child_to_host,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::trigger::parser::Outcome;
+
+    const ENTER_ALT: &[u8] = b"\x1b[?1049h";
+
+    #[test]
+    fn armed_wiring_shares_trigger_state_with_input_detector() {
+        let mut wiring = wire_trigger_io(true, Vec::new(), Vec::new());
+        assert!(matches!(wiring.host_to_child, HostToChildWriter::Armed(_)));
+        assert!(matches!(wiring.child_to_host, ChildToHostWriter::Armed(_)));
+
+        let input = wiring
+            .input
+            .as_ref()
+            .expect("armed wiring should allocate shared trigger state")
+            .clone();
+
+        wiring.host_to_child.write_all(b":").unwrap();
+
+        let mut guard = input.lock().unwrap();
+        assert_eq!(guard.feed_input_byte(b"q"[0]).outcome(), Outcome::None);
+        assert_eq!(guard.feed_input_byte(b"\n"[0]).outcome(), Outcome::Q);
+    }
+
+    #[test]
+    fn armed_wiring_shares_trigger_state_with_output_arbiter() {
+        let mut wiring = wire_trigger_io(true, Vec::new(), Vec::new());
+        let input = wiring
+            .input
+            .as_ref()
+            .expect("armed wiring should allocate shared trigger state")
+            .clone();
+
+        wiring.child_to_host.write_all(ENTER_ALT).unwrap();
+
+        assert!(
+            input.lock().unwrap().is_alt_screen(),
+            "armed output path should keep alt-screen state in sync"
+        );
+    }
+
+    #[test]
+    fn disarmed_wiring_bypasses_trigger_state_entirely() {
+        let mut wiring = wire_trigger_io(false, Vec::new(), Vec::new());
+        assert!(matches!(
+            wiring.host_to_child,
+            HostToChildWriter::Passthrough(_)
+        ));
+        assert!(matches!(
+            wiring.child_to_host,
+            ChildToHostWriter::Passthrough(_)
+        ));
+        assert!(
+            wiring.input.is_none(),
+            "disarmed wiring must not allocate trigger state"
+        );
+
+        wiring.host_to_child.write_all(b":q\n").unwrap();
+        wiring.child_to_host.write_all(ENTER_ALT).unwrap();
+
+        let HostToChildWriter::Passthrough(host_bytes) = wiring.host_to_child else {
+            panic!("disarmed host path should remain a passthrough writer");
+        };
+        assert_eq!(host_bytes, b":q\n");
+
+        let ChildToHostWriter::Passthrough(child_bytes) = wiring.child_to_host else {
+            panic!("disarmed child path should remain a passthrough writer");
+        };
+        assert_eq!(child_bytes, ENTER_ALT);
+    }
 }
 
 // Unix-only real-spawn integration smoke. Exercises
@@ -155,7 +311,8 @@ mod real_pump {
         let sink = SharedSink::default();
         let host_stdin = Cursor::new(Vec::<u8>::new()); // immediate EOF
 
-        let pump = start_io_pump(&mut session, host_stdin, sink.clone()).expect("start_io_pump");
+        let pump =
+            start_io_pump(&mut session, host_stdin, sink.clone(), true).expect("start_io_pump");
 
         // Bounded child wait: if echo regresses, kill it so
         // the master reader unblocks and the child_to_host
@@ -235,7 +392,8 @@ mod real_pump {
         // -> writer drops -> cat sees EOT on slave -> exits.
         let host_stdin = Cursor::new(b"hello\n".to_vec());
 
-        let pump = start_io_pump(&mut session, host_stdin, sink.clone()).expect("start_io_pump");
+        let pump =
+            start_io_pump(&mut session, host_stdin, sink.clone(), true).expect("start_io_pump");
 
         let wait_deadline = Instant::now() + WAIT_BUDGET;
         let status = loop {

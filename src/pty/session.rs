@@ -1030,7 +1030,7 @@ mod real_session {
         )
         .expect("spawn /bin/sh");
         let sink = SharedSink::default();
-        let pump = start_io_pump(&mut session, Cursor::new(host_stdin), sink.clone())
+        let pump = start_io_pump(&mut session, Cursor::new(host_stdin), sink.clone(), true)
             .expect("start_io_pump");
         let result = run_pump_session_with(
             PtyChild {
@@ -1076,7 +1076,7 @@ mod real_session {
 
         let mut term = session.child.clone_killer();
         let sink = SharedSink::default();
-        let pump = start_io_pump(&mut session, Cursor::new(Vec::<u8>::new()), sink)
+        let pump = start_io_pump(&mut session, Cursor::new(Vec::<u8>::new()), sink, true)
             .expect("start_io_pump");
 
         // Signal the child BEFORE handing the session to the
