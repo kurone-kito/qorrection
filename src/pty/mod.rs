@@ -56,19 +56,25 @@ use crate::{
     Error, Result,
 };
 
+fn trigger_armed(command: &OsString) -> bool {
+    crate::cli::arming::is_armed(command.as_os_str())
+}
+
 /// Run a single PTY-wrapped session for `command` + `args`.
 ///
 /// Snapshots the terminal capabilities, routes through the
 /// non-TTY bypass when either stdin or stdout is not a TTY,
-/// otherwise acquires raw mode for the duration of the session
-/// and invokes the PTY session body. Returns the exit code the
-/// wrapped child should bubble up to the binary entry point.
+/// otherwise snapshots the trigger-arming policy, acquires raw
+/// mode for the duration of the session, and invokes the PTY
+/// session body. Returns the exit code the wrapped child should
+/// bubble up to the binary entry point.
 pub fn run_session(command: OsString, args: Vec<OsString>) -> Result<ExitCode> {
     let caps = detect::detect();
     run_session_with(
         caps,
         command,
         args,
+        trigger_armed,
         crate::term::acquire_raw,
         default_body,
         non_tty_passthrough,
@@ -87,19 +93,22 @@ pub fn run_session(command: OsString, args: Vec<OsString>) -> Result<ExitCode> {
 /// mode. Otherwise acquire raw mode, run `body`, and let the
 /// returned [`RawGuard`] restore the terminal on drop (normal
 /// return, `?` propagation, or panic unwind).
-pub(crate) fn run_session_with<A, B, P>(
+pub(crate) fn run_session_with<Arm, A, B, P>(
     caps: TerminalCaps,
     command: OsString,
     args: Vec<OsString>,
+    arm: Arm,
     acquire: A,
     body: B,
     passthrough: P,
 ) -> Result<ExitCode>
 where
+    Arm: FnOnce(&OsString) -> bool,
     A: FnOnce(&TerminalCaps) -> Result<RawGuard>,
-    B: FnOnce(&OsString, &[OsString]) -> Result<ExitCode>,
+    B: FnOnce(bool, &OsString, &[OsString]) -> Result<ExitCode>,
     P: FnOnce(&OsString, &[OsString]) -> Result<ExitCode>,
 {
+    let armed = arm(&command);
     if !(caps.stdin_is_tty && caps.stdout_is_tty) {
         // Non-TTY bypass: no raw mode, no PTY pump. The child
         // inherits the parent's stdio so pipes/redirects work
@@ -110,7 +119,7 @@ where
     // of the function. `let _ = ...` would drop it immediately
     // and defeat the purpose.
     let _raw = acquire(&caps)?;
-    body(&command, &args)
+    body(armed, &command, &args)
 }
 
 /// Non-TTY bypass body. Spawns `command` + `args` with stdio
@@ -134,10 +143,11 @@ fn non_tty_passthrough(command: &OsString, args: &[OsString]) -> Result<ExitCode
 /// supervisor surfaces the child's exit status through the
 /// returned [`ExitCode`]; nothing in this body writes to host
 /// stdout directly.
-fn default_body(command: &OsString, args: &[OsString]) -> Result<ExitCode> {
+fn default_body(armed: bool, command: &OsString, args: &[OsString]) -> Result<ExitCode> {
     let size = size::initial_size();
     tracing::info!(
         program = %command.to_string_lossy(),
+        armed,
         cols = size.cols,
         rows = size.rows,
         "wrap session: spawning child on PTY"
@@ -151,7 +161,7 @@ fn default_body(command: &OsString, args: &[OsString]) -> Result<ExitCode> {
     // disarmed once `run_pump_session` takes over (it installs
     // its own internal `KillOnDropGuard`).
     let mut kill_guard = session::KillOnDropGuard::armed(session.child.clone_killer());
-    let pump = pump::start_io_pump(&mut session, std::io::stdin(), std::io::stdout())?;
+    let pump = pump::start_io_pump(&mut session, std::io::stdin(), std::io::stdout(), armed)?;
     kill_guard.disarm();
     session::run_pump_session(session, pump)
 }
@@ -190,7 +200,7 @@ mod tests {
     fn no_acquire(_caps: &TerminalCaps) -> Result<RawGuard> {
         panic!("acquire must not run on the non-TTY bypass path");
     }
-    fn no_body(_cmd: &OsString, _args: &[OsString]) -> Result<ExitCode> {
+    fn no_body(_armed: bool, _cmd: &OsString, _args: &[OsString]) -> Result<ExitCode> {
         panic!("body must not run on the non-TTY bypass path");
     }
 
@@ -213,11 +223,12 @@ mod tests {
             caps(),
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             move |_caps| {
                 acquired_for_acquire.store(true, Ordering::SeqCst);
                 Ok(RawGuard::noop())
             },
-            move |_cmd, _args| {
+            move |_armed, _cmd, _args| {
                 assert!(
                     acquired_for_body.load(Ordering::SeqCst),
                     "body ran before acquire"
@@ -242,11 +253,12 @@ mod tests {
             caps(),
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             move |_caps| {
                 acquire_observed.fetch_add(1, Ordering::SeqCst);
                 Ok(RawGuard::noop())
             },
-            |_cmd, _args| Ok(ExitCode::SUCCESS),
+            |_armed, _cmd, _args| Ok(ExitCode::SUCCESS),
             no_passthrough,
         )
         .unwrap();
@@ -263,8 +275,9 @@ mod tests {
             caps(),
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             move |_caps| Ok(observed_guard(counter_for_acquire)),
-            |_cmd, _args| Ok(ExitCode::SUCCESS),
+            |_armed, _cmd, _args| Ok(ExitCode::SUCCESS),
             no_passthrough,
         )
         .unwrap();
@@ -281,8 +294,9 @@ mod tests {
             caps(),
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             move |_caps| Ok(observed_guard(counter_for_acquire)),
-            |_cmd, _args| {
+            |_armed, _cmd, _args| {
                 Err(crate::Error::Terminal(std::io::Error::other(
                     "synthetic body failure",
                 )))
@@ -305,8 +319,9 @@ mod tests {
                 caps(),
                 OsString::from("dummy"),
                 Vec::new(),
+                |_| true,
                 move |_caps| Ok(observed_guard(counter_for_call)),
-                |_cmd, _args| -> Result<ExitCode> {
+                |_armed, _cmd, _args| -> Result<ExitCode> {
                     panic!("body boom");
                 },
                 no_passthrough,
@@ -326,12 +341,13 @@ mod tests {
             caps(),
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             |_caps| {
                 Err(crate::Error::Terminal(std::io::Error::other(
                     "synthetic acquire failure",
                 )))
             },
-            move |_cmd, _args| {
+            move |_armed, _cmd, _args| {
                 body_observed.store(true, Ordering::SeqCst);
                 Ok(ExitCode::SUCCESS)
             },
@@ -360,6 +376,7 @@ mod tests {
             c,
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             no_acquire,
             no_body,
             move |_cmd, _args| {
@@ -392,6 +409,7 @@ mod tests {
             c,
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             no_acquire,
             no_body,
             move |_cmd, _args| {
@@ -416,6 +434,7 @@ mod tests {
             c,
             OsString::from("dummy"),
             Vec::new(),
+            |_| true,
             no_acquire,
             no_body,
             |_cmd, _args| {
@@ -426,6 +445,62 @@ mod tests {
         );
 
         assert!(matches!(result, Err(crate::Error::Spawn(_))));
+    }
+
+    #[test]
+    fn run_session_with_passes_armed_true_to_body() {
+        let observed = Arc::new(AtomicBool::new(false));
+        let observed_for_body = Arc::clone(&observed);
+
+        let _exit = run_session_with(
+            caps(),
+            OsString::from("claude"),
+            Vec::new(),
+            |command| {
+                assert_eq!(command, &OsString::from("claude"));
+                true
+            },
+            |_caps| Ok(RawGuard::noop()),
+            move |armed, _cmd, _args| {
+                observed_for_body.store(armed, Ordering::SeqCst);
+                Ok(ExitCode::SUCCESS)
+            },
+            no_passthrough,
+        )
+        .unwrap();
+
+        assert!(
+            observed.load(Ordering::SeqCst),
+            "body should observe armed=true for allowlisted commands"
+        );
+    }
+
+    #[test]
+    fn run_session_with_passes_armed_false_to_body() {
+        let observed = Arc::new(AtomicBool::new(true));
+        let observed_for_body = Arc::clone(&observed);
+
+        let _exit = run_session_with(
+            caps(),
+            OsString::from("vim"),
+            Vec::new(),
+            |command| {
+                assert_eq!(command, &OsString::from("vim"));
+                false
+            },
+            |_caps| Ok(RawGuard::noop()),
+            move |armed, _cmd, _args| {
+                observed_for_body.store(armed, Ordering::SeqCst);
+                Ok(ExitCode::SUCCESS)
+            },
+            no_passthrough,
+        )
+        .unwrap();
+
+        assert!(
+            !observed.load(Ordering::SeqCst),
+            "body should observe armed=false for non-allowlisted commands"
+        );
     }
 
     /// `non_tty_passthrough` is the production bypass body and
