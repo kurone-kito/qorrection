@@ -68,15 +68,17 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use portable_pty::{ChildKiller, ExitStatus};
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use portable_pty::{MasterPty, PtySize};
 
 use crate::pty::exit::map_exit_status;
 use crate::pty::forward::{Direction, ForwarderExit, ForwarderHandle};
 use crate::pty::pump::IoPump;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use crate::pty::size;
 use crate::pty::spawn::SpawnedSession;
+#[cfg(windows)]
+use crate::pty::winsize::WindowsResizePoller;
 #[cfg(unix)]
 use crate::signals::{Event as SignalEvent, SignalGuard};
 use crate::trigger::input::SharedRenderProgress;
@@ -377,12 +379,51 @@ pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<
     {
         run_pump_session_unix(child, master, pump)
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        let code = run_pump_session_windows(child, master, pump)?;
+        Ok(SessionStatus::Exited(code))
+    }
+    #[cfg(all(not(unix), not(windows)))]
     {
         let child = PtyChild { child };
         let _master = master;
         let code = run_pump_session_with(child, pump, Deadlines::production())?;
         Ok(SessionStatus::Exited(code))
+    }
+}
+
+/// Windows session variant: forwards PTY resize events detected
+/// by a 250ms polling thread to the child PTY master.
+///
+/// No shutdown-signal source exists on Windows, so the session
+/// supervisor always exits via the normal child-wait path.
+#[cfg(windows)]
+fn run_pump_session_windows(
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    master: Box<dyn MasterPty + Send>,
+    pump: IoPump,
+) -> Result<ExitCode> {
+    let child = PtyChild { child };
+    let poller = WindowsResizePoller::start();
+    match run_pump_session_inner(child, pump, Deadlines::production(), || {
+        if poller.take_resize() {
+            if let Some(sz) = size::current_size() {
+                master
+                    .resize(sz)
+                    .map_err(|e| Error::Pty(e.context("apply Windows resize poll")))?;
+            } else {
+                tracing::debug!(
+                    "supervisor: skipping Windows resize poll because host size was unavailable"
+                );
+            }
+        }
+        Ok(TickAction::Continue)
+    })? {
+        SupervisorOutcome::Exited(code) => Ok(code),
+        SupervisorOutcome::Shutdown(_) => {
+            unreachable!("Windows on_tick never returns Shutdown")
+        }
     }
 }
 
