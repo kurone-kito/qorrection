@@ -59,6 +59,18 @@ use crate::{
     Error, Result,
 };
 
+pub(crate) enum BodyResult {
+    Complete(ExitCode),
+    #[cfg(unix)]
+    Deferred(Box<dyn FnOnce() -> Result<ExitCode>>),
+}
+
+impl From<ExitCode> for BodyResult {
+    fn from(code: ExitCode) -> Self {
+        Self::Complete(code)
+    }
+}
+
 fn trigger_armed(command: &OsString) -> bool {
     crate::cli::arming::is_armed(command.as_os_str())
 }
@@ -108,7 +120,7 @@ pub(crate) fn run_session_with<Arm, A, B, P>(
 where
     Arm: FnOnce(&OsString) -> bool,
     A: FnOnce(&TerminalCaps) -> Result<RawGuard>,
-    B: FnOnce(bool, &OsString, &[OsString]) -> Result<ExitCode>,
+    B: FnOnce(bool, &OsString, &[OsString]) -> Result<BodyResult>,
     P: FnOnce(&OsString, &[OsString]) -> Result<ExitCode>,
 {
     let armed = arm(&command);
@@ -121,8 +133,14 @@ where
     // Bind the guard to a named local so it lives until the end
     // of the function. `let _ = ...` would drop it immediately
     // and defeat the purpose.
-    let _raw = acquire(&caps)?;
-    body(armed, &command, &args)
+    let raw = acquire(&caps)?;
+    let result = body(armed, &command, &args)?;
+    drop(raw);
+    match result {
+        BodyResult::Complete(code) => Ok(code),
+        #[cfg(unix)]
+        BodyResult::Deferred(complete) => complete(),
+    }
 }
 
 /// Non-TTY bypass body. Spawns `command` + `args` with stdio
@@ -146,7 +164,7 @@ fn non_tty_passthrough(command: &OsString, args: &[OsString]) -> Result<ExitCode
 /// supervisor surfaces the child's exit status through the
 /// returned [`ExitCode`]; nothing in this body writes to host
 /// stdout directly.
-fn default_body(armed: bool, command: &OsString, args: &[OsString]) -> Result<ExitCode> {
+fn default_body(armed: bool, command: &OsString, args: &[OsString]) -> Result<BodyResult> {
     let size = size::initial_size();
     tracing::info!(
         program = %command.to_string_lossy(),
@@ -179,7 +197,13 @@ fn default_body(armed: bool, command: &OsString, args: &[OsString]) -> Result<Ex
     #[cfg(not(unix))]
     let pump = pump::start_io_pump(&mut session, std::io::stdin(), std::io::stdout(), armed)?;
     kill_guard.disarm();
-    session::run_pump_session(session, pump)
+    match session::run_pump_session(session, pump)? {
+        session::SessionStatus::Exited(code) => Ok(BodyResult::Complete(code)),
+        #[cfg(unix)]
+        session::SessionStatus::DeferredShutdown(shutdown) => {
+            Ok(BodyResult::Deferred(Box::new(move || shutdown.complete())))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -216,7 +240,7 @@ mod tests {
     fn no_acquire(_caps: &TerminalCaps) -> Result<RawGuard> {
         panic!("acquire must not run on the non-TTY bypass path");
     }
-    fn no_body(_armed: bool, _cmd: &OsString, _args: &[OsString]) -> Result<ExitCode> {
+    fn no_body(_armed: bool, _cmd: &OsString, _args: &[OsString]) -> Result<BodyResult> {
         panic!("body must not run on the non-TTY bypass path");
     }
 
@@ -249,7 +273,7 @@ mod tests {
                     acquired_for_body.load(Ordering::SeqCst),
                     "body ran before acquire"
                 );
-                Ok(ExitCode::SUCCESS)
+                Ok(ExitCode::SUCCESS.into())
             },
             no_passthrough,
         )
@@ -274,7 +298,7 @@ mod tests {
                 acquire_observed.fetch_add(1, Ordering::SeqCst);
                 Ok(RawGuard::noop())
             },
-            |_armed, _cmd, _args| Ok(ExitCode::SUCCESS),
+            |_armed, _cmd, _args| Ok(ExitCode::SUCCESS.into()),
             no_passthrough,
         )
         .unwrap();
@@ -293,7 +317,7 @@ mod tests {
             Vec::new(),
             |_| true,
             move |_caps| Ok(observed_guard(counter_for_acquire)),
-            |_armed, _cmd, _args| Ok(ExitCode::SUCCESS),
+            |_armed, _cmd, _args| Ok(ExitCode::SUCCESS.into()),
             no_passthrough,
         )
         .unwrap();
@@ -337,7 +361,7 @@ mod tests {
                 Vec::new(),
                 |_| true,
                 move |_caps| Ok(observed_guard(counter_for_call)),
-                |_armed, _cmd, _args| -> Result<ExitCode> {
+                |_armed, _cmd, _args| -> Result<BodyResult> {
                     panic!("body boom");
                 },
                 no_passthrough,
@@ -365,7 +389,7 @@ mod tests {
             },
             move |_armed, _cmd, _args| {
                 body_observed.store(true, Ordering::SeqCst);
-                Ok(ExitCode::SUCCESS)
+                Ok(ExitCode::SUCCESS.into())
             },
             no_passthrough,
         );
@@ -375,6 +399,44 @@ mod tests {
             !body_ran.load(Ordering::SeqCst),
             "body ran after acquire failure"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_session_with_drops_guard_before_deferred_body_action() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_for_acquire = Arc::clone(&counter);
+        let counter_for_body = Arc::clone(&counter);
+        let deferred_ran = Arc::new(AtomicBool::new(false));
+        let deferred_observed = Arc::clone(&deferred_ran);
+
+        let code = run_session_with(
+            caps(),
+            OsString::from("dummy"),
+            Vec::new(),
+            |_| true,
+            move |_caps| Ok(observed_guard(counter_for_acquire)),
+            move |_armed, _cmd, _args| {
+                Ok(BodyResult::Deferred(Box::new(move || {
+                    assert_eq!(
+                        counter_for_body.load(Ordering::SeqCst),
+                        1,
+                        "raw guard must drop before deferred shutdown action runs"
+                    );
+                    deferred_observed.store(true, Ordering::SeqCst);
+                    Ok(ExitCode::SUCCESS)
+                })))
+            },
+            no_passthrough,
+        )
+        .expect("deferred action should complete successfully");
+
+        let _ = code;
+        assert!(
+            deferred_ran.load(Ordering::SeqCst),
+            "deferred action should run after raw guard drop"
+        );
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 
     /// Non-TTY bypass routing — when stdin is not a TTY, the
@@ -479,7 +541,7 @@ mod tests {
             |_caps| Ok(RawGuard::noop()),
             move |armed, _cmd, _args| {
                 observed_for_body.store(armed, Ordering::SeqCst);
-                Ok(ExitCode::SUCCESS)
+                Ok(ExitCode::SUCCESS.into())
             },
             no_passthrough,
         )
@@ -507,7 +569,7 @@ mod tests {
             |_caps| Ok(RawGuard::noop()),
             move |armed, _cmd, _args| {
                 observed_for_body.store(armed, Ordering::SeqCst);
-                Ok(ExitCode::SUCCESS)
+                Ok(ExitCode::SUCCESS.into())
             },
             no_passthrough,
         )

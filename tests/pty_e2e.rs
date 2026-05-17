@@ -9,6 +9,7 @@ mod support;
 #[cfg(unix)]
 mod unix {
     use super::support;
+    use rexpect::process::signal::Signal;
     use rexpect::process::wait::WaitStatus;
     use rexpect::session::spawn_command;
     use std::process::Command;
@@ -405,6 +406,31 @@ mod unix {
         assert!(
             remaining.contains("child terminated by signal 15"),
             "expected SIGTERM diagnostic on PTY output, got {remaining:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn q9_wrapper_sigterm_gracefully_terminates_child_and_exits_143(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = q9();
+        command.args(["sh", "-c", "printf 'READY\\n'; exec sleep 30"]);
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        let _ready = session.exp_string("READY")?;
+        session.process.signal(Signal::SIGTERM)?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 143) => {}
+            other => {
+                panic!("expected q9 to exit 143 after wrapper SIGTERM, got {other:?}")
+            }
+        }
+
+        assert!(
+            remaining.contains("child terminated by signal 15"),
+            "expected wrapper SIGTERM path to surface SIGTERM diagnostic, got {remaining:?}"
         );
         Ok(())
     }
