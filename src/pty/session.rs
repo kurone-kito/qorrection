@@ -1336,6 +1336,7 @@ mod tests {
         ]]);
         let resizer = MockResizer::default();
         let mut query_calls = 0usize;
+        let (pump, _exited) = cancellable_h2c_quiet_c2h_pump();
 
         let code = run_pump_session_with_signals(
             child,
@@ -1345,7 +1346,7 @@ mod tests {
                 query_calls += 1;
                 Some(pty_size(132, 44))
             },
-            quiet_pump(),
+            pump,
             fast_deadlines(),
         )
         .expect("clean exit with resize must be Ok");
@@ -1361,13 +1362,14 @@ mod tests {
         let child = MockChild::new(ExitStatus::with_exit_code(0), 1);
         let signals = MockSignalSource::new([vec![SignalEvent::Resize]]);
         let resizer = MockResizer::default();
+        let (pump, _exited) = cancellable_h2c_quiet_c2h_pump();
 
         let code = run_pump_session_with_signals(
             child,
             &resizer,
             &signals,
             || None,
-            quiet_pump(),
+            pump,
             fast_deadlines(),
         )
         .expect("clean exit with skipped resize must be Ok");
