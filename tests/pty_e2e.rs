@@ -470,12 +470,12 @@ mod unix {
              before=$(stty -a | tr '\\n' ' ')\n\
              printf 'MODE_BEFORE:%s\\n' \"$before\"\n\
              \"$1\" sh -c 'printf READY\\n; exec sleep 30' &\n\
-             qpid=$!\n\
+             child_pid=$!\n\
              while [ ! -f \"$2\" ]; do\n\
                sleep 0.05\n\
              done\n\
-             kill -TERM \"$qpid\"\n\
-             wait \"$qpid\"\n\
+             kill -TERM \"$child_pid\"\n\
+             wait \"$child_pid\"\n\
              rc=$?\n\
              after=$(stty -a | tr '\\n' ' ')\n\
              printf 'Q9_EXIT:%s\\n' \"$rc\"\n\
