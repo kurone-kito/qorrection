@@ -183,12 +183,14 @@ fn non_ascii_names_are_not_armed() {
     // Unicode homoglyph / full-width "claude" does not arm.
     // These are multi-byte sequences that look similar but are
     // compared byte-by-byte against ASCII allowlist entries.
+    // cspell:disable — intentional non-ASCII / homoglyph test data
     let non_ascii: &[&str] = &[
         "ｃｌａｕｄｅ", // full-width
         "сlаudе",       // Cyrillic 'с', 'а', 'е'
-        "clàude",       // accent
-        "cláude",       // accent
+        "clàude",       // grave accent
+        "cláude",       // acute accent
     ];
+    // cspell:enable
     for s in non_ascii {
         assert!(!is_armed(OsStr::new(s)), "{s:?} (non-ASCII) must not arm");
     }
