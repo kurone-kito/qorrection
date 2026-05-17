@@ -26,10 +26,7 @@ cross-platform tested (Linux, macOS, Windows ConPTY). See
 
 ## Demo
 
-<!-- Replace with an animated GIF or asciinema embed once recorded.
-     Suggested recording: `q9 claude` session → type `:q` → ambulance sweeps. -->
-
-*Screencast coming soon.*
+![qorrection demo](docs/demo/qorrection-demo.gif)
 
 ## Why
 
