@@ -39,26 +39,26 @@ entry file should be an explicit operator choice, not the default.
 
 ## IDD file map
 
-| File                                                       | Role                                                                                 |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `.github/instructions/idd-overview.instructions.md`        | Shared definitions, command sets, routing table, critique-pass mapping               |
-| `.github/instructions/idd-discover.instructions.md`        | A0-T–A4.5: find a viable issue, route roadmap audits, run suitability, and hand off  |
-| `.github/instructions/idd-roadmap-audit.instructions.md`   | A1.5: audit roadmap completion and run roadmap-side coordination before A2           |
-| `.github/instructions/idd-claim.instructions.md`           | A5: run claim pre-checks and claim verification                                      |
-| `.github/instructions/idd-work.instructions.md`            | B1-B3 + C1-C6: create worktree, plan, implement, and self-review                     |
-| `.github/instructions/idd-pr-submit.instructions.md`       | D1-D4: rebase, validate, push, open PR, and wait for CI                              |
-| `.github/instructions/idd-ci.instructions.md`              | D4/E15 helper: shared CI polling helper used by later phases                         |
-| `.github/instructions/idd-advisory-wait.instructions.md`   | AW1-AW5 helper: shared Copilot advisory-wait protocol (E14, F2, F3)                  |
-| `.github/instructions/idd-review-snapshot.instructions.md` | E1–E3: fetch activity snapshot, run critique, check if ReviewItems_snapshot is empty |
-| `.github/instructions/idd-review-triage.instructions.md`   | E4–E8: classify items, score, and record dispositions                                |
-| `.github/instructions/idd-review-fix.instructions.md`      | E9-E15: fix accepted review items and push follow-up commits                         |
-| `.github/instructions/idd-pre-merge.instructions.md`       | F1–F2: resolve conflicts and verify all pre-merge conditions                         |
-| `.github/instructions/idd-merge-handoff.instructions.md`   | F2.5: resolve merge-policy handoff vs autonomous merge routing                       |
-| `.github/instructions/idd-merge.instructions.md`           | F3–F5: execute the merge, clean up, and loop back to discover                        |
-| `.github/instructions/idd-resume.instructions.md`          | Resume Step 0-3: route crash, stalled, stale-takeover, or clean continuation         |
-| `.github/instructions/idd-resume-stall.instructions.md`    | Resume S1-S5: handle stalled-session recovery with a dedicated safety gate           |
-| `docs/idd-review-policy-profiles.md`                       | PR review policy profiles and customization surfaces                                 |
-| `docs/idd-comment-minimization.md`                         | Live status digest contract and post-merge comment minimization policy               |
+| File                                                       | Role                                                                                                            |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `.github/instructions/idd-overview.instructions.md`        | Shared definitions, command sets, routing table, critique-pass mapping                                          |
+| `.github/instructions/idd-discover.instructions.md`        | A0-T–A4.5: find a viable issue, classify roadmap vs. leaf nodes during traversal, run suitability, and hand off |
+| `.github/instructions/idd-roadmap-audit.instructions.md`   | A1.5: audit roadmap completion, including bottom-up recursive roadmap closure, before A2                        |
+| `.github/instructions/idd-claim.instructions.md`           | A5: run claim pre-checks and claim verification                                                                 |
+| `.github/instructions/idd-work.instructions.md`            | B1-B3 + C1-C6: create worktree, plan, implement, and self-review                                                |
+| `.github/instructions/idd-pr-submit.instructions.md`       | D1-D4: rebase, validate, push, open PR, and wait for CI                                                         |
+| `.github/instructions/idd-ci.instructions.md`              | D4/E15 helper: shared CI polling helper used by later phases                                                    |
+| `.github/instructions/idd-advisory-wait.instructions.md`   | AW1-AW5 helper: shared Copilot advisory-wait protocol (E14, F2, F3)                                             |
+| `.github/instructions/idd-review-snapshot.instructions.md` | E1–E3: fetch activity snapshot, run critique, check if ReviewItems_snapshot is empty                            |
+| `.github/instructions/idd-review-triage.instructions.md`   | E4–E8: classify items, score, record dispositions, and run E-phase branch-sync check before F-phase             |
+| `.github/instructions/idd-review-fix.instructions.md`      | E9-E15: fix accepted review items and push follow-up commits (merge-from-main, not rebase)                      |
+| `.github/instructions/idd-pre-merge.instructions.md`       | F1: final read-only branch-state check; F2: verify all pre-merge conditions                                     |
+| `.github/instructions/idd-merge-handoff.instructions.md`   | F2.5: resolve merge-policy handoff vs autonomous merge routing                                                  |
+| `.github/instructions/idd-merge.instructions.md`           | F3–F5: execute the merge, clean up, and loop back to discover                                                   |
+| `.github/instructions/idd-resume.instructions.md`          | Resume Step 0-3: route crash, stalled, stale-takeover, or clean continuation                                    |
+| `.github/instructions/idd-resume-stall.instructions.md`    | Resume S1-S5: handle stalled-session recovery with a dedicated safety gate                                      |
+| `docs/idd-review-policy-profiles.md`                       | PR review policy profiles and customization surfaces                                                            |
+| `docs/idd-comment-minimization.md`                         | Live status digest contract and post-merge comment minimization policy                                          |
 
 ## ReviewItems_snapshot lifecycle
 
@@ -128,6 +128,23 @@ instead of treating them as ready to start. Approval actors are a
 repository-local policy choice and remain distinct from trusted
 operational marker actors; CODEOWNERS mismatch does not replace this
 pre-start gate.
+
+## CODEOWNERS and Merge Gates
+
+CODEOWNERS are evaluated after work reaches the pull request, not during
+Discover or Claim. They become part of the PR review and merge gates in
+E and F phases: review snapshots must report required approval and
+CODEOWNER satisfaction, and F2/F3 must prove that unresolved review
+state, advisory state, CI, and branch freshness are all current for the
+same head.
+
+Autonomous operation therefore requires a satisfiable GitHub merge
+topology in addition to a recorded IDD merge policy. If the PR author is
+also the only matching CODEOWNER, GitHub's self-approval limit can make
+required CODEOWNER review impossible to satisfy. In that topology, IDD
+must wait for an eligible non-author reviewer, use a deliberately
+configured pull-request-only ruleset bypass for the trusted merge actor,
+or stop for a repository policy change.
 
 ## Suitability policy handoff
 
@@ -229,6 +246,13 @@ roadmap issue itself is being mutated, then release them once that
 roadmap-side effect is complete. They are not a proxy lock for child
 claims.
 
+Recursive roadmap hierarchies still follow that rule. Leaf execution
+issues finish first, then the deepest completed nested roadmap is
+audited and closed under its own `roadmap-audit/*` claim, and only then
+is the parent roadmap re-evaluated. Bottom-up closure keeps roadmap
+claims scoped to the exact roadmap issue being mutated instead of
+turning one parent claim into a lock over child or sibling work.
+
 If the roadmap claim remains open after the roadmap-side effect is done,
 or if it appears to serialize child execution, treat that as a misuse
 signal: revalidate ownership and stale timing before continuing, then
@@ -311,6 +335,34 @@ Non-Copilot agents can still drive the workflow end to end, but they
 should expect those later phases to interact with Copilot as a GitHub
 reviewer because that is part of this repository's current PR policy.
 
+## Maintainer-Authorized External-Check Waivers
+
+Some repositories classify a small set of repo-external checks as
+waivable so IDD can recover when a third-party integration becomes
+stuck, unavailable, or rate-limited even though repository-owned
+validation is already healthy. This is a human-authorized escape hatch,
+not an automatic merge bypass.
+
+High-level maintainer flow:
+
+1. Let IDD reach an F2 hold and confirm that the blocker is a
+   configured external check rather than a repository-owned or
+   GitHub-required gate.
+2. Run the optional waiver facade in dry-run mode to inspect the exact
+   comment body, matched check, active claim, current PR HEAD, and
+   expiry before any mutation.
+3. Post the canonical waiver comment only through the helper's apply
+   path, then resume IDD on the same PR head.
+4. Keep every other gate intact: review currency, unresolved threads,
+   unreplied comments, required reviews, claim ownership, and GitHub
+   merge topology still have to pass normally.
+
+Normal PR approvals or casual maintainer comments such as "continue" are
+not sufficient waiver evidence. In solo-maintainer repositories, this
+helper-generated comment is the auditable authorization surface because
+self-approval cannot express the required claim, head, check, and expiry
+proof.
+
 ## Optional helper scripts
 
 The idd-skill source repository that ships this template currently includes the
@@ -324,6 +376,9 @@ following optional helper scripts:
   snapshot metrics)
 - `scripts/advisory-wait-state.mjs` (read-only advisory-wait evidence
   and AW outcome reporting)
+- `scripts/external-check-waiver.mjs` (maintainer dry-run/apply facade
+  for canonical external-check waiver comments on the current PR head;
+  added in this release)
 - `scripts/pre-merge-readiness.mjs` (read-only F2/F3 readiness evidence
   collection)
 - `scripts/review-disposition-verify.mjs` (read-only E7 disposition
