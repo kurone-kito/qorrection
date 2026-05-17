@@ -34,17 +34,27 @@ changing the wrapped program at all.
 
 ## Install
 
+Download a self-contained binary from the
+[GitHub Releases page][releases] — no Rust toolchain required.
+Archives are available for:
+
+- Linux x86_64 and aarch64 (statically linked musl)
+- macOS x86_64 and Apple Silicon
+- Windows x86_64
+
+Extract the archive, then copy `q9` (or `q9.exe`) to a directory
+on your `PATH`.
+
+To build from source instead:
+
 ```sh
-# From source (requires a recent stable Rust toolchain)
 cargo install --git https://github.com/kurone-kito/qorrection
 ```
 
-Planned distribution channels:
+`cargo install qorrection` via [crates.io][crates] is coming soon.
 
-- GitHub Releases (self-contained `qorrection` and `q9` binaries
-  for Linux, macOS, Windows)
-- `cargo install qorrection` (crates.io)
-- Homebrew tap (future)
+[releases]: https://github.com/kurone-kito/qorrection/releases/latest
+[crates]: https://crates.io/crates/qorrection
 
 ## Usage
 
