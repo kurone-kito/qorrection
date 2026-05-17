@@ -68,11 +68,17 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use portable_pty::{ChildKiller, ExitStatus};
+#[cfg(unix)]
+use portable_pty::{MasterPty, PtySize};
 
 use crate::pty::exit::map_exit_status;
 use crate::pty::forward::{Direction, ForwarderExit, ForwarderHandle};
 use crate::pty::pump::IoPump;
+#[cfg(unix)]
+use crate::pty::size;
 use crate::pty::spawn::SpawnedSession;
+#[cfg(unix)]
+use crate::signals::{Event as SignalEvent, SignalGuard};
 use crate::{Error, Result};
 
 /// Polling and join time budgets the supervisor honors.
@@ -165,6 +171,33 @@ impl SupervisedChild for PtyChild {
     }
 }
 
+#[cfg(unix)]
+trait ResizeTarget {
+    fn resize_pty(&self, size: PtySize) -> anyhow::Result<()>;
+}
+
+#[cfg(unix)]
+impl<T> ResizeTarget for T
+where
+    T: MasterPty + ?Sized,
+{
+    fn resize_pty(&self, size: PtySize) -> anyhow::Result<()> {
+        self.resize(size)
+    }
+}
+
+#[cfg(unix)]
+trait SignalSource {
+    fn drain_events(&self) -> io::Result<Vec<SignalEvent>>;
+}
+
+#[cfg(unix)]
+impl SignalSource for SignalGuard {
+    fn drain_events(&self) -> io::Result<Vec<SignalEvent>> {
+        self.drain()
+    }
+}
+
 /// RAII guard that best-effort `kill()`s the child unless
 /// disarmed. Documented invariant: armed until a successful
 /// wait returns and consumes a status. See module-level docs.
@@ -202,32 +235,104 @@ impl Drop for KillOnDropGuard {
 /// [`IoPump`] into the trait-seam form and delegates to
 /// [`run_pump_session_with`].
 pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<ExitCode> {
+    let SpawnedSession { child, master } = session;
+    #[cfg(unix)]
+    {
+        run_pump_session_unix(child, master, pump)
+    }
+    #[cfg(not(unix))]
+    {
+        let child = PtyChild { child };
+        let _master = master;
+        run_pump_session_with(child, pump, Deadlines::production())
+    }
+}
+
+#[cfg(unix)]
+fn run_pump_session_unix(
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    master: Box<dyn MasterPty + Send>,
+    pump: IoPump,
+) -> Result<ExitCode> {
+    run_pump_session_unix_with_setup(child, master, pump, SignalGuard::install_resize_only)
+}
+
+#[cfg(unix)]
+fn run_pump_session_unix_with_setup<Setup>(
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    master: Box<dyn MasterPty + Send>,
+    pump: IoPump,
+    setup: Setup,
+) -> Result<ExitCode>
+where
+    Setup: FnOnce() -> Result<SignalGuard>,
+{
+    let mut kill_guard = KillOnDropGuard::armed(child.clone_killer());
+    let child = PtyChild { child };
     // Bind the master to a named local so it stays alive for
     // the entire supervised session. A wildcard (`master: _`)
     // pattern would drop it immediately at the destructuring
     // point, EOF'ing the slave side and racing the child / the
     // forwarder threads. The named binding extends its lifetime
     // to the end of the function, so the master is dropped only
-    // after `run_pump_session_with` returns.
-    let SpawnedSession {
+    // after the supervisor returns.
+    let signal_guard = setup()?;
+    kill_guard.disarm();
+    run_pump_session_with_signals(
         child,
-        master: _master,
-    } = session;
-    let child = PtyChild { child };
-    run_pump_session_with(child, pump, Deadlines::production())
+        master.as_ref(),
+        &signal_guard,
+        size::current_size,
+        pump,
+        Deadlines::production(),
+    )
 }
 
 /// Lifecycle core, parameterised over the [`SupervisedChild`]
 /// implementation and the time [`Deadlines`]. Exists so unit
 /// tests can drive every branch of the state machine without a
 /// real PTY.
+#[cfg_attr(unix, allow(dead_code))]
 pub(crate) fn run_pump_session_with<C>(
-    mut child: C,
+    child: C,
     pump: IoPump,
     deadlines: Deadlines,
 ) -> Result<ExitCode>
 where
     C: SupervisedChild,
+{
+    run_pump_session_inner(child, pump, deadlines, || Ok(()))
+}
+
+#[cfg(unix)]
+fn run_pump_session_with_signals<C, R, S, Q>(
+    child: C,
+    resizer: &R,
+    signals: &S,
+    mut query_size: Q,
+    pump: IoPump,
+    deadlines: Deadlines,
+) -> Result<ExitCode>
+where
+    C: SupervisedChild,
+    R: ResizeTarget + ?Sized,
+    S: SignalSource + ?Sized,
+    Q: FnMut() -> Option<PtySize>,
+{
+    run_pump_session_inner(child, pump, deadlines, || {
+        handle_resize_events(signals, resizer, &mut query_size)
+    })
+}
+
+fn run_pump_session_inner<C, Tick>(
+    mut child: C,
+    pump: IoPump,
+    deadlines: Deadlines,
+    mut on_tick: Tick,
+) -> Result<ExitCode>
+where
+    C: SupervisedChild,
+    Tick: FnMut() -> Result<()>,
 {
     let mut guard = KillOnDropGuard::armed(child.clone_killer());
 
@@ -244,6 +349,7 @@ where
             Ok(None) => {}
             Err(e) => return Err(wrap_io("child try_wait", e)),
         }
+        on_tick()?;
 
         // Harvest finished forwarders so we can inspect their
         // results in subsequent ticks. This is a non-blocking
@@ -374,6 +480,33 @@ where
     log_forwarder_outcome(Direction::ChildToHost, c2h_result);
 
     map_exit_status(status)
+}
+
+#[cfg(unix)]
+fn handle_resize_events<S, R, Q>(signals: &S, resizer: &R, query_size: &mut Q) -> Result<()>
+where
+    S: SignalSource + ?Sized,
+    R: ResizeTarget + ?Sized,
+    Q: FnMut() -> Option<PtySize>,
+{
+    let saw_resize = signals
+        .drain_events()
+        .map_err(|e| wrap_io("signal drain", e))?
+        .into_iter()
+        .any(|event| matches!(event, SignalEvent::Resize));
+    if !saw_resize {
+        return Ok(());
+    }
+
+    let Some(size) = query_size() else {
+        tracing::debug!("supervisor: skipping SIGWINCH resize because host size was unavailable");
+        return Ok(());
+    };
+
+    resizer
+        .resize_pty(size)
+        .map_err(|e| Error::Pty(e.context("apply SIGWINCH PTY resize")))?;
+    Ok(())
 }
 
 fn wrap_io(context: &'static str, e: io::Error) -> Error {
@@ -508,6 +641,8 @@ mod tests {
     };
     use std::thread;
     use std::time::{Duration, Instant};
+    #[cfg(unix)]
+    use std::{cell::RefCell, collections::VecDeque};
 
     /// In-memory mock of a `portable_pty::Child` for unit tests.
     /// State machine: `try_wait` returns `None` `pending_polls`
@@ -518,6 +653,7 @@ mod tests {
         state: Arc<Mutex<MockState>>,
     }
 
+    #[derive(Debug)]
     struct MockState {
         polls_remaining: usize,
         scheduled: ExitStatus,
@@ -1139,6 +1275,143 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    #[derive(Debug)]
+    struct PortableMockChild {
+        state: Arc<Mutex<MockState>>,
+    }
+
+    #[cfg(unix)]
+    impl portable_pty::ChildKiller for PortableMockChild {
+        fn kill(&mut self) -> io::Result<()> {
+            let mut s = self.state.lock().unwrap();
+            s.kills += 1;
+            s.scheduled = ExitStatus::with_signal("Signal 15");
+            s.polls_remaining = 0;
+            Ok(())
+        }
+
+        fn clone_killer(&self) -> Box<dyn ChildKiller + Send + Sync> {
+            Box::new(MockKiller {
+                state: Arc::clone(&self.state),
+            })
+        }
+    }
+
+    #[cfg(unix)]
+    impl portable_pty::Child for PortableMockChild {
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            let mut s = self.state.lock().unwrap();
+            s.try_waits += 1;
+            if s.polls_remaining == 0 {
+                Ok(Some(s.scheduled.clone()))
+            } else {
+                s.polls_remaining -= 1;
+                Ok(None)
+            }
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            Ok(self.state.lock().unwrap().scheduled.clone())
+        }
+
+        fn process_id(&self) -> Option<u32> {
+            None
+        }
+    }
+
+    #[cfg(unix)]
+    #[derive(Debug)]
+    struct DummyMaster;
+
+    #[cfg(unix)]
+    impl MasterPty for DummyMaster {
+        fn resize(&self, _size: PtySize) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn get_size(&self) -> anyhow::Result<PtySize> {
+            Ok(pty_size(80, 24))
+        }
+
+        fn try_clone_reader(&self) -> anyhow::Result<Box<dyn io::Read + Send>> {
+            Ok(Box::new(Cursor::new(Vec::<u8>::new())))
+        }
+
+        fn take_writer(&self) -> anyhow::Result<Box<dyn io::Write + Send>> {
+            Ok(Box::new(Vec::<u8>::new()))
+        }
+
+        fn process_group_leader(&self) -> Option<libc::pid_t> {
+            None
+        }
+
+        fn as_raw_fd(&self) -> Option<std::os::fd::RawFd> {
+            None
+        }
+
+        fn tty_name(&self) -> Option<std::path::PathBuf> {
+            None
+        }
+    }
+
+    #[cfg(unix)]
+    #[derive(Default)]
+    struct MockSignalSource {
+        batches: RefCell<VecDeque<Vec<SignalEvent>>>,
+    }
+
+    #[cfg(unix)]
+    impl MockSignalSource {
+        fn new(batches: impl IntoIterator<Item = Vec<SignalEvent>>) -> Self {
+            Self {
+                batches: RefCell::new(batches.into_iter().collect()),
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    impl SignalSource for MockSignalSource {
+        fn drain_events(&self) -> io::Result<Vec<SignalEvent>> {
+            Ok(self.batches.borrow_mut().pop_front().unwrap_or_default())
+        }
+    }
+
+    #[cfg(unix)]
+    #[derive(Default)]
+    struct MockResizer {
+        calls: Mutex<Vec<PtySize>>,
+        fail: bool,
+    }
+
+    #[cfg(unix)]
+    impl MockResizer {
+        fn calls(&self) -> Vec<PtySize> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    #[cfg(unix)]
+    impl ResizeTarget for MockResizer {
+        fn resize_pty(&self, size: PtySize) -> anyhow::Result<()> {
+            if self.fail {
+                anyhow::bail!("synthetic resize failure");
+            }
+            self.calls.lock().unwrap().push(size);
+            Ok(())
+        }
+    }
+
+    #[cfg(unix)]
+    fn pty_size(cols: u16, rows: u16) -> PtySize {
+        PtySize {
+            cols,
+            rows,
+            pixel_width: 0,
+            pixel_height: 0,
+        }
+    }
+
     /// Sanity check: harvest is non-blocking when the forwarder
     /// has not finished yet.
     #[test]
@@ -1156,6 +1429,118 @@ mod tests {
         drop(h2c);
         // Drop pump.child_to_host too.
         drop(pump.child_to_host);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resize_events_collapse_to_latest_host_size() {
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 1);
+        let signals = MockSignalSource::new([vec![
+            SignalEvent::Resize,
+            SignalEvent::Resize,
+            SignalEvent::Resize,
+        ]]);
+        let resizer = MockResizer::default();
+        let mut query_calls = 0usize;
+        let (pump, _exited) = cancellable_h2c_quiet_c2h_pump();
+
+        let code = run_pump_session_with_signals(
+            child,
+            &resizer,
+            &signals,
+            || {
+                query_calls += 1;
+                Some(pty_size(132, 44))
+            },
+            pump,
+            fast_deadlines(),
+        )
+        .expect("clean exit with resize must be Ok");
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert_eq!(query_calls, 1, "resize batch should query host size once");
+        assert_eq!(resizer.calls(), vec![pty_size(132, 44)]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resize_events_ignore_unusable_runtime_size() {
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 1);
+        let signals = MockSignalSource::new([vec![SignalEvent::Resize]]);
+        let resizer = MockResizer::default();
+        let (pump, _exited) = cancellable_h2c_quiet_c2h_pump();
+
+        let code = run_pump_session_with_signals(
+            child,
+            &resizer,
+            &signals,
+            || None,
+            pump,
+            fast_deadlines(),
+        )
+        .expect("clean exit with skipped resize must be Ok");
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert!(resizer.calls().is_empty(), "no resize should be applied");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resize_failure_surfaces_and_kills_child() {
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 1_000_000);
+        let handle = child.handle();
+        let signals = MockSignalSource::new([vec![SignalEvent::Resize]]);
+        let resizer = MockResizer {
+            calls: Mutex::new(Vec::new()),
+            fail: true,
+        };
+
+        let err = run_pump_session_with_signals(
+            child,
+            &resizer,
+            &signals,
+            || Some(pty_size(100, 30)),
+            quiet_pump(),
+            fast_deadlines(),
+        )
+        .expect_err("resize failure must surface");
+
+        assert!(matches!(err, Error::Pty(_)), "got {err:?}");
+        assert!(
+            handle.lock().unwrap().kills >= 1,
+            "resize failure must kill the child on unwind"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signal_setup_failure_kills_child_before_supervisor_handoff() {
+        let state = Arc::new(Mutex::new(MockState {
+            polls_remaining: 0,
+            scheduled: ExitStatus::with_exit_code(0),
+            kills: 0,
+            try_waits: 0,
+        }));
+
+        let err = run_pump_session_unix_with_setup(
+            Box::new(PortableMockChild {
+                state: Arc::clone(&state),
+            }),
+            Box::new(DummyMaster),
+            quiet_pump(),
+            || Err(io::Error::new(io::ErrorKind::AlreadyExists, "synthetic setup failure").into()),
+        )
+        .expect_err("setup failure must surface");
+
+        assert!(
+            matches!(&err, Error::Terminal(io_err) if io_err.kind() == io::ErrorKind::AlreadyExists),
+            "expected Terminal(AlreadyExists), got {err:?}"
+        );
+        assert_eq!(
+            state.lock().unwrap().kills,
+            1,
+            "outer setup guard must kill the child on setup failure"
+        );
     }
 }
 

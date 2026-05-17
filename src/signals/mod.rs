@@ -70,7 +70,7 @@ static WRITE_FD: AtomicI32 = AtomicI32::new(-1);
 static CACHED_READ_FD: AtomicI32 = AtomicI32::new(-1);
 static CACHED_WRITE_FD: AtomicI32 = AtomicI32::new(-1);
 
-/// RAII handle for the installed SIGWINCH/SIGTERM handlers.
+/// RAII handle for the installed self-pipe-backed signal handlers.
 ///
 /// Drop restores the previous handlers but does **not** close
 /// the self-pipe FDs (see the comment on `Drop` for the
@@ -85,7 +85,19 @@ pub struct SignalGuard {
     read_fd: RawFd,
     write_fd: RawFd,
     old_winch: libc::sigaction,
-    old_term: libc::sigaction,
+    old_term: Option<libc::sigaction>,
+}
+
+#[derive(Clone, Copy)]
+enum InstallMode {
+    ResizeOnly,
+    ResizeAndShutdown,
+}
+
+impl InstallMode {
+    const fn captures_shutdown(self) -> bool {
+        matches!(self, Self::ResizeAndShutdown)
+    }
 }
 
 impl SignalGuard {
@@ -94,6 +106,19 @@ impl SignalGuard {
     /// Errors if a `SignalGuard` is already live in this
     /// process, or if `pipe2` / `sigaction` fail.
     pub fn install() -> Result<Self> {
+        Self::install_with_mode(InstallMode::ResizeAndShutdown)
+    }
+
+    /// Install only SIGWINCH handling and leave SIGTERM at its
+    /// previous disposition.
+    ///
+    /// This lets the Unix resize path start forwarding WINCH
+    /// without changing shutdown behavior before `#60` owns it.
+    pub fn install_resize_only() -> Result<Self> {
+        Self::install_with_mode(InstallMode::ResizeOnly)
+    }
+
+    fn install_with_mode(mode: InstallMode) -> Result<Self> {
         if INSTALLED
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
@@ -157,6 +182,20 @@ impl SignalGuard {
                 return Err(e.into());
             }
         };
+
+        if !mode.captures_shutdown() {
+            if opened_new {
+                CACHED_READ_FD.store(read_fd, Ordering::Release);
+                CACHED_WRITE_FD.store(write_fd, Ordering::Release);
+            }
+            return Ok(Self {
+                read_fd,
+                write_fd,
+                old_winch,
+                old_term: None,
+            });
+        }
+
         let old_term = match install_handler(libc::SIGTERM) {
             Ok(prev) => prev,
             Err(e) => {
@@ -199,7 +238,7 @@ impl SignalGuard {
             read_fd,
             write_fd,
             old_winch,
-            old_term,
+            old_term: Some(old_term),
         })
     }
 
@@ -276,12 +315,18 @@ impl Drop for SignalGuard {
         // signal that arrives at this thread while we re-install
         // the previous handlers, which keeps the rollback path
         // out of any signal disposition surprise.
-        let _mask = BlockedSignals::block(&[libc::SIGWINCH, libc::SIGTERM]);
+        let _mask = if self.old_term.is_some() {
+            BlockedSignals::block(&[libc::SIGWINCH, libc::SIGTERM])
+        } else {
+            BlockedSignals::block(&[libc::SIGWINCH])
+        };
         // SAFETY: `old_winch`/`old_term` were obtained from the
         // matching sigaction calls in `install`.
         unsafe {
             libc::sigaction(libc::SIGWINCH, &self.old_winch, std::ptr::null_mut());
-            libc::sigaction(libc::SIGTERM, &self.old_term, std::ptr::null_mut());
+            if let Some(old_term) = &self.old_term {
+                libc::sigaction(libc::SIGTERM, old_term, std::ptr::null_mut());
+            }
         }
         WRITE_FD.store(-1, Ordering::Release);
         // FDs deliberately stay open and remain cached for any
@@ -533,6 +578,28 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
         assert_eq!(events, vec![Event::Shutdown]);
+    }
+
+    #[test]
+    fn resize_only_install_skips_sigterm_handler_setup() {
+        let _serial = SERIAL.lock().unwrap();
+        FAIL_INSTALL_FOR.store(libc::SIGTERM, Ordering::Release);
+        let guard = SignalGuard::install_resize_only();
+        FAIL_INSTALL_FOR.store(0, Ordering::Release);
+        let guard = guard.expect("resize-only install");
+
+        let rc = unsafe { libc::kill(libc::getpid(), libc::SIGWINCH) };
+        assert_eq!(rc, 0);
+
+        let mut events = Vec::new();
+        for _ in 0..100 {
+            events.extend(guard.drain().unwrap());
+            if !events.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(events, vec![Event::Resize]);
     }
 
     #[test]
