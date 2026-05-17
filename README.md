@@ -48,7 +48,7 @@ on your `PATH`.
 To build from source instead:
 
 ```sh
-cargo install --git https://github.com/kurone-kito/qorrection
+cargo install --git https://github.com/kurone-kito/qorrection --tag v0.1.0
 ```
 
 `cargo install qorrection` via [crates.io][crates] is coming soon.
