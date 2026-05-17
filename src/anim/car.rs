@@ -10,24 +10,35 @@
 //!
 //! The size taxonomy mirrors the spec's width buckets:
 //!
-//! | Variant | Used at                | Width budget |
-//! | ------- | ---------------------- | ------------ |
-//! | [`tiny`] | 40 ≤ cols < 80         | ≤ 12         |
-//! | [`std`]  | 80 ≤ cols < 120 (`:q`) | ≤ 30         |
-//! | [`big`]  | cols ≥ 120 (`:wq`)    | ≤ 45         |
+//! | Variant        | Used at                     | Width budget |
+//! | -------------- | --------------------------- | ------------ |
+//! | [`TINY`]       | 40 ≤ cols < 80              | ≤ 12         |
+//! | [`STD`]        | 80 ≤ cols < 120 (`:q`)      | ≤ 30         |
+//! | [`BIG`]        | 120 ≤ cols < 160 (`:wq`)    | ≤ 45         |
+//! | [`OVERSIZED`]  | cols ≥ 160 (`:wq` large)    | ≤ 100        |
 //!
 //! Below 40 cols the spec drops the ASCII car entirely and uses
 //! a plain-text gag (Phase F `anim::fallback`); the assets here
 //! simply do not apply.
+//!
+//! The [`OVERSIZED`] variant is reserved for the post-v0.1 oversized
+//! cameo track defined in `docs/anim-large-art-contract.md`. It exposes
+//! the asset so the future renderer (issue #118) can integrate it without
+//! ad hoc path handling.
 
 /// Compact 4-row car body for the 40-79 col bucket.
 pub const TINY: &str = include_str!("assets/tiny.txt");
 /// Standard 6-row car for the `:q` scene at ≥ 80 cols.
 pub const STD: &str = include_str!("assets/std.txt");
-/// Larger 7-row car for the `:wq` scene at ≥ 120 cols.
+/// Larger 7-row car for the `:wq` scene at 120–159 cols.
 /// Body carries the two stacked labels per spec R5 / Q1:
 /// `WRITE QUEUE` over `418 I'm an AI agent`.
 pub const BIG: &str = include_str!("assets/big.txt");
+/// Oversized 10-row locomotive body for the `:wq` large-terminal path
+/// at ≥ 160 cols. Carries `418 I'M AN AI AGENT`, `WRITE QUEUE`, and
+/// `:wq` per the oversized-scene contract (`docs/anim-large-art-contract.md`).
+/// Reserved for post-v0.1 renderer integration (issue #118).
+pub const OVERSIZED: &str = include_str!("assets/oversized.txt");
 
 /// Split a raw asset into trimmed-of-trailing-newline lines.
 ///
@@ -84,6 +95,11 @@ mod tests {
             "big.txt exceeds 45 cols (was {})",
             max_width(BIG)
         );
+        assert!(
+            max_width(OVERSIZED) <= 100,
+            "oversized.txt exceeds 100 cols (was {})",
+            max_width(OVERSIZED)
+        );
     }
 
     /// Heights reflect the table in the module doc; if any of
@@ -93,12 +109,22 @@ mod tests {
         assert!(height(TINY) >= 3, "tiny too short: {}", height(TINY));
         assert!(height(STD) >= 5, "std too short: {}", height(STD));
         assert!(height(BIG) >= 6, "big too short: {}", height(BIG));
+        assert!(
+            height(OVERSIZED) >= 8,
+            "oversized too short: {}",
+            height(OVERSIZED)
+        );
     }
 
     /// All assets must be pure ASCII so chars-count == cols.
     #[test]
     fn assets_are_pure_ascii() {
-        for (name, asset) in [("tiny", TINY), ("std", STD), ("big", BIG)] {
+        for (name, asset) in [
+            ("tiny", TINY),
+            ("std", STD),
+            ("big", BIG),
+            ("oversized", OVERSIZED),
+        ] {
             assert!(
                 asset.is_ascii(),
                 "{name}.txt contains non-ASCII bytes; width math would lie",
@@ -124,5 +150,24 @@ mod tests {
     fn big_car_carries_spec_labels() {
         assert!(BIG.contains("WRITE QUEUE"));
         assert!(BIG.contains("418 I'm an AI agent"));
+    }
+
+    /// Oversized car must carry the contract-significant labels from
+    /// `docs/anim-large-art-contract.md`.
+    #[test]
+    fn oversized_carries_contract_labels() {
+        assert!(OVERSIZED.contains("418"), "oversized missing 418 label");
+        assert!(
+            OVERSIZED.contains("AI AGENT"),
+            "oversized missing AI AGENT label"
+        );
+        assert!(
+            OVERSIZED.contains(":wq"),
+            "oversized missing :wq trigger label"
+        );
+        assert!(
+            OVERSIZED.contains("WRITE QUEUE"),
+            "oversized missing WRITE QUEUE label"
+        );
     }
 }
