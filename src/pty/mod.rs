@@ -47,6 +47,8 @@ mod pump;
 mod session;
 mod size;
 mod spawn;
+#[cfg(windows)]
+mod winsize;
 
 use std::ffi::OsString;
 use std::process::{Command, ExitCode};
