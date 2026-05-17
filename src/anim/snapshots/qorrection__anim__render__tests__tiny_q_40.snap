@@ -1,0 +1,285 @@
+---
+source: src/anim/render.rs
+expression: snapshot_frames(&plan.frames)
+---
+--- frame 000 ---
+<ESC>[1;1H<ESC>[2J
+
+
+)
+
+--- frame 001 ---
+<ESC>[1;1H<ESC>[2J
+
+
+o)
+
+--- frame 002 ---
+<ESC>[1;1H<ESC>[2J
+_
+|
+(o)
+
+--- frame 003 ---
+<ESC>[1;1H<ESC>[2J_
+]_
+ |
+=(o)
+
+--- frame 004 ---
+<ESC>[1;1H<ESC>[2J__
+Q]_
+  |
+)=(o)
+
+--- frame 005 ---
+<ESC>[1;1H<ESC>[2J___
+QQ]_
+   |
+o)=(o)
+
+--- frame 006 ---
+<ESC>[1;1H<ESC>[2J ___
+[QQ]_
+|   |
+(o)=(o)
+
+--- frame 007 ---
+<ESC>[1;1H<ESC>[2J  ___
+ [QQ]_
+ |   |
+=(o)=(o)
+
+--- frame 008 ---
+<ESC>[1;1H<ESC>[2J   ___
+  [QQ]_
+  |   |
+F=(o)=(o)
+
+--- frame 009 ---
+<ESC>[1;1H<ESC>[2J    ___
+   [QQ]_
+   |   |
+Fo=(o)=(o)
+
+--- frame 010 ---
+<ESC>[1;1H<ESC>[2J     ___
+    [QQ]_
+    |   |
+Fi-=(o)=(o)
+
+--- frame 011 ---
+<ESC>[1;1H<ESC>[2J      ___
+     [QQ]_
+     |   |
+Fo-F=(o)=(o)
+
+--- frame 012 ---
+<ESC>[1;1H<ESC>[2J       ___
+      [QQ]_
+      |   |
+Fi-Fo=(o)=(o)
+
+--- frame 013 ---
+<ESC>[1;1H<ESC>[2J        ___
+       [QQ]_
+       |   |
+Fo-Fi-=(o)=(o)
+
+--- frame 014 ---
+<ESC>[1;1H<ESC>[2J         ___
+        [QQ]_
+        |   |
+Fi-Fo-F=(o)=(o)
+
+--- frame 015 ---
+<ESC>[1;1H<ESC>[2J          ___
+         [QQ]_
+         |   |
+Fo-Fi-Fo=(o)=(o)
+
+--- frame 016 ---
+<ESC>[1;1H<ESC>[2J           ___
+          [QQ]_
+          |   |
+Fi-Fo-Fi-=(o)=(o)
+
+--- frame 017 ---
+<ESC>[1;1H<ESC>[2J            ___
+           [QQ]_
+           |   |
+Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 018 ---
+<ESC>[1;1H<ESC>[2J             ___
+            [QQ]_
+            |   |
+Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 019 ---
+<ESC>[1;1H<ESC>[2J              ___
+             [QQ]_
+             |   |
+Fo-Fi-Fo-Fi-=(o)=(o)
+
+--- frame 020 ---
+<ESC>[1;1H<ESC>[2J               ___
+              [QQ]_
+              |   |
+Fi-Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 021 ---
+<ESC>[1;1H<ESC>[2J                ___
+               [QQ]_
+               |   |
+Fo-Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 022 ---
+<ESC>[1;1H<ESC>[2J                 ___
+                [QQ]_
+                |   |
+Fi-Fo-Fi-Fo-Fi-=(o)=(o)
+
+--- frame 023 ---
+<ESC>[1;1H<ESC>[2J                  ___
+                 [QQ]_
+                 |   |
+Fo-Fi-Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 024 ---
+<ESC>[1;1H<ESC>[2J                   ___
+                  [QQ]_
+                  |   |
+Fi-Fo-Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 025 ---
+<ESC>[1;1H<ESC>[2J                    ___
+                   [QQ]_
+                   |   |
+Fo-Fi-Fo-Fi-Fo-Fi-=(o)=(o)
+
+--- frame 026 ---
+<ESC>[1;1H<ESC>[2J                     ___
+                    [QQ]_
+                    |   |
+Fi-Fo-Fi-Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 027 ---
+<ESC>[1;1H<ESC>[2J                      ___
+                     [QQ]_
+                     |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 028 ---
+<ESC>[1;1H<ESC>[2J                       ___
+                      [QQ]_
+                      |   |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-=(o)=(o)
+
+--- frame 029 ---
+<ESC>[1;1H<ESC>[2J                        ___
+                       [QQ]_
+                       |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 030 ---
+<ESC>[1;1H<ESC>[2J                         ___
+                        [QQ]_
+                        |   |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 031 ---
+<ESC>[1;1H<ESC>[2J                          ___
+                         [QQ]_
+                         |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-=(o)=(o)
+
+--- frame 032 ---
+<ESC>[1;1H<ESC>[2J                           ___
+                          [QQ]_
+                          |   |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 033 ---
+<ESC>[1;1H<ESC>[2J                            ___
+                           [QQ]_
+                           |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 034 ---
+<ESC>[1;1H<ESC>[2J                             ___
+                            [QQ]_
+                            |   |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-=(o)=(o)
+
+--- frame 035 ---
+<ESC>[1;1H<ESC>[2J                              ___
+                             [QQ]_
+                             |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 036 ---
+<ESC>[1;1H<ESC>[2J                               ___
+                              [QQ]_
+                              |   |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 037 ---
+<ESC>[1;1H<ESC>[2J                                ___
+                               [QQ]_
+                               |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-=(o)=(o)
+
+--- frame 038 ---
+<ESC>[1;1H<ESC>[2J                                 ___
+                                [QQ]_
+                                |   |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-F=(o)=(o)
+
+--- frame 039 ---
+<ESC>[1;1H<ESC>[2J                                  ___
+                                 [QQ]_
+                                 |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo=(o)=(o)
+
+--- frame 040 ---
+<ESC>[1;1H<ESC>[2J                                   ___
+                                  [QQ]_
+                                  |   |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-=(o)=(o
+
+--- frame 041 ---
+<ESC>[1;1H<ESC>[2J                                    ___
+                                   [QQ]_
+                                   |   |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-F=(o)=(
+
+--- frame 042 ---
+<ESC>[1;1H<ESC>[2J                                     ___
+                                    [QQ]
+                                    |   
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo=(o)=
+
+--- frame 043 ---
+<ESC>[1;1H<ESC>[2J                                      __
+                                     [QQ
+                                     |  
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-=(o)
+
+--- frame 044 ---
+<ESC>[1;1H<ESC>[2J                                       _
+                                      [Q
+                                      | 
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-F=(o
+
+--- frame 045 ---
+<ESC>[1;1H<ESC>[2J                                        
+                                       [
+                                       |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo=(
+
+--- frame 046 ---
+<ESC>[1;1H<ESC>[2J                                        
+                                        
+                                        
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-=

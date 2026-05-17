@@ -1,0 +1,1389 @@
+---
+source: src/anim/render.rs
+expression: snapshot_frames(&plan.frames)
+---
+--- frame 000 ---
+<ESC>[1;1H<ESC>[2J
+
+
+
+|
+|
+/
+
+--- frame 001 ---
+<ESC>[1;1H<ESC>[2J
+
+
+
+_|
+ |
+_/
+
+--- frame 002 ---
+<ESC>[1;1H<ESC>[2J
+
+
+\
+__|
+  |
+__/
+
+--- frame 003 ---
+<ESC>[1;1H<ESC>[2J
+
+\
+ \
+___|
+o  |
+___/
+
+--- frame 004 ---
+<ESC>[1;1H<ESC>[2J
+
+ \
+  \
+____|
+ o  |
+____/
+
+--- frame 005 ---
+<ESC>[1;1H<ESC>[2J
+_
+  \
+   \
+_____|
+  o  |
+)____/
+
+--- frame 006 ---
+<ESC>[1;1H<ESC>[2J
+__
+   \
+    \
+______|
+   o  |
+O)____/
+
+--- frame 007 ---
+<ESC>[1;1H<ESC>[2J
+___
+    \
+t    \
+_______|
+o   o  |
+(O)____/
+
+--- frame 008 ---
+<ESC>[1;1H<ESC>[2J
+____
+     \
+nt    \
+________|
+ o   o  |
+_(O)____/
+
+--- frame 009 ---
+<ESC>[1;1H<ESC>[2J
+\____
+      \
+ent    \
+_________|
+  o   o  |
+__(O)____/
+
+--- frame 010 ---
+<ESC>[1;1H<ESC>[2J_
+ \____
+       \
+gent    \
+__________|
+   o   o  |
+___(O)____/
+
+--- frame 011 ---
+<ESC>[1;1H<ESC>[2J__
+  \____
+        \
+agent    \
+___________|
+o   o   o  |
+____(O)____/
+
+--- frame 012 ---
+<ESC>[1;1H<ESC>[2J___
+   \____
+         \
+ agent    \
+____________|
+ o   o   o  |
+_____(O)____/
+
+--- frame 013 ---
+<ESC>[1;1H<ESC>[2J____
+    \____
+E         \
+I agent    \
+_____________|
+  o   o   o  |
+______(O)____/
+
+--- frame 014 ---
+<ESC>[1;1H<ESC>[2J_____
++    \____
+UE         \
+AI agent    \
+______________|
+   o   o   o  |
+_______(O)____/
+
+--- frame 015 ---
+<ESC>[1;1H<ESC>[2J______
+ +    \____
+EUE         \
+ AI agent    \
+_______________|
+o   o   o   o  |
+________(O)____/
+
+--- frame 016 ---
+<ESC>[1;1H<ESC>[2J_______
+  +    \____
+UEUE         \
+n AI agent    \
+________________|
+ o   o   o   o  |
+_________(O)____/
+
+--- frame 017 ---
+<ESC>[1;1H<ESC>[2J________
+   +    \____
+QUEUE         \
+an AI agent    \
+_________________|
+  o   o   o   o  |
+__________(O)____/
+
+--- frame 018 ---
+<ESC>[1;1H<ESC>[2J_________
+    +    \____
+ QUEUE         \
+ an AI agent    \
+__________________|
+   o   o   o   o  |
+___________(O)____/
+
+--- frame 019 ---
+<ESC>[1;1H<ESC>[2J__________
++    +    \____
+E QUEUE         \
+m an AI agent    \
+___________________|
+o   o   o   o   o  |
+____________(O)____/
+
+--- frame 020 ---
+<ESC>[1;1H<ESC>[2J___________
+ +    +    \____
+TE QUEUE         \
+'m an AI agent    \
+____________________|
+ o   o   o   o   o  |
+_____________(O)____/
+
+--- frame 021 ---
+<ESC>[1;1H<ESC>[2J____________
+  +    +    \____
+ITE QUEUE         \
+I'm an AI agent    \
+_____________________|
+  o   o   o   o   o  |
+______________(O)____/
+
+--- frame 022 ---
+<ESC>[1;1H<ESC>[2J_____________
+   +    +    \____
+RITE QUEUE         \
+ I'm an AI agent    \
+______________________|
+   o   o   o   o   o  |
+_______________(O)____/
+
+--- frame 023 ---
+<ESC>[1;1H<ESC>[2J______________
+    +    +    \____
+WRITE QUEUE         \
+8 I'm an AI agent    \
+_______________________|
+o   o   o   o   o   o  |
+________________(O)____/
+
+--- frame 024 ---
+<ESC>[1;1H<ESC>[2J_______________
++    +    +    \____
+ WRITE QUEUE         \
+18 I'm an AI agent    \
+________________________|
+ o   o   o   o   o   o  |
+_________________(O)____/
+
+--- frame 025 ---
+<ESC>[1;1H<ESC>[2J________________
+ +    +    +    \____
+  WRITE QUEUE         \
+418 I'm an AI agent    \
+_________________________|
+  o   o   o   o   o   o  |
+__________________(O)____/
+
+--- frame 026 ---
+<ESC>[1;1H<ESC>[2J_________________
+  +    +    +    \____
+   WRITE QUEUE         \
+ 418 I'm an AI agent    \
+__________________________|
+   o   o   o   o   o   o  |
+)__________________(O)____/
+
+--- frame 027 ---
+<ESC>[1;1H<ESC>[2J__________________
+   +    +    +    \____
+    WRITE QUEUE         \
+  418 I'm an AI agent    \
+___________________________|
+o   o   o   o   o   o   o  |
+O)__________________(O)____/
+
+--- frame 028 ---
+<ESC>[1;1H<ESC>[2J __________________
+/   +    +    +    \____
+     WRITE QUEUE         \
+   418 I'm an AI agent    \
+____________________________|
+ o   o   o   o   o   o   o  |
+(O)__________________(O)____/
+
+--- frame 029 ---
+<ESC>[1;1H<ESC>[2J  __________________
+ /   +    +    +    \____
+/     WRITE QUEUE         \
+    418 I'm an AI agent    \
+_____________________________|
+  o   o   o   o   o   o   o  |
+_(O)__________________(O)____/
+
+--- frame 030 ---
+<ESC>[1;1H<ESC>[2J   __________________
+  /   +    +    +    \____
+ /     WRITE QUEUE         \
+/    418 I'm an AI agent    \
+______________________________|
+   o   o   o   o   o   o   o  |
+__(O)__________________(O)____/
+
+--- frame 031 ---
+<ESC>[1;1H<ESC>[2J    __________________
+   /   +    +    +    \____
+  /     WRITE QUEUE         \
+ /    418 I'm an AI agent    \
+/______________________________|
+|   o   o   o   o   o   o   o  |
+\__(O)__________________(O)____/
+
+--- frame 032 ---
+<ESC>[1;1H<ESC>[2J     __________________
+    /   +    +    +    \____
+   /     WRITE QUEUE         \
+  /    418 I'm an AI agent    \
+ /______________________________|
+ |   o   o   o   o   o   o   o  |
+ \__(O)__________________(O)____/
+
+--- frame 033 ---
+<ESC>[1;1H<ESC>[2J      __________________
+     /   +    +    +    \____
+    /     WRITE QUEUE         \
+   /    418 I'm an AI agent    \
+  /______________________________|
+  |   o   o   o   o   o   o   o  |
+  \__(O)__________________(O)____/
+
+--- frame 034 ---
+<ESC>[1;1H<ESC>[2J       __________________
+      /   +    +    +    \____
+     /     WRITE QUEUE         \
+    /    418 I'm an AI agent    \
+   /______________________________|
+   |   o   o   o   o   o   o   o  |
+   \__(O)__________________(O)____/
+
+--- frame 035 ---
+<ESC>[1;1H<ESC>[2J        __________________
+       /   +    +    +    \____
+      /     WRITE QUEUE         \
+     /    418 I'm an AI agent    \
+    /______________________________|
+    |   o   o   o   o   o   o   o  |
+F   \__(O)__________________(O)____/
+
+--- frame 036 ---
+<ESC>[1;1H<ESC>[2J         __________________
+        /   +    +    +    \____
+       /     WRITE QUEUE         \
+      /    418 I'm an AI agent    \
+     /______________________________|
+     |   o   o   o   o   o   o   o  |
+Fi   \__(O)__________________(O)____/
+
+--- frame 037 ---
+<ESC>[1;1H<ESC>[2J          __________________
+         /   +    +    +    \____
+        /     WRITE QUEUE         \
+       /    418 I'm an AI agent    \
+      /______________________________|
+      |   o   o   o   o   o   o   o  |
+Fo-   \__(O)__________________(O)____/
+
+--- frame 038 ---
+<ESC>[1;1H<ESC>[2J           __________________
+          /   +    +    +    \____
+         /     WRITE QUEUE         \
+        /    418 I'm an AI agent    \
+       /______________________________|
+       |   o   o   o   o   o   o   o  |
+Fi-F   \__(O)__________________(O)____/
+
+--- frame 039 ---
+<ESC>[1;1H<ESC>[2J            __________________
+           /   +    +    +    \____
+          /     WRITE QUEUE         \
+         /    418 I'm an AI agent    \
+        /______________________________|
+        |   o   o   o   o   o   o   o  |
+Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 040 ---
+<ESC>[1;1H<ESC>[2J             __________________
+            /   +    +    +    \____
+           /     WRITE QUEUE         \
+          /    418 I'm an AI agent    \
+         /______________________________|
+         |   o   o   o   o   o   o   o  |
+Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 041 ---
+<ESC>[1;1H<ESC>[2J              __________________
+             /   +    +    +    \____
+            /     WRITE QUEUE         \
+           /    418 I'm an AI agent    \
+          /______________________________|
+          |   o   o   o   o   o   o   o  |
+Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 042 ---
+<ESC>[1;1H<ESC>[2J               __________________
+              /   +    +    +    \____
+             /     WRITE QUEUE         \
+            /    418 I'm an AI agent    \
+           /______________________________|
+           |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 043 ---
+<ESC>[1;1H<ESC>[2J                __________________
+               /   +    +    +    \____
+              /     WRITE QUEUE         \
+             /    418 I'm an AI agent    \
+            /______________________________|
+            |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 044 ---
+<ESC>[1;1H<ESC>[2J                 __________________
+                /   +    +    +    \____
+               /     WRITE QUEUE         \
+              /    418 I'm an AI agent    \
+             /______________________________|
+             |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 045 ---
+<ESC>[1;1H<ESC>[2J                  __________________
+                 /   +    +    +    \____
+                /     WRITE QUEUE         \
+               /    418 I'm an AI agent    \
+              /______________________________|
+              |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 046 ---
+<ESC>[1;1H<ESC>[2J                   __________________
+                  /   +    +    +    \____
+                 /     WRITE QUEUE         \
+                /    418 I'm an AI agent    \
+               /______________________________|
+               |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 047 ---
+<ESC>[1;1H<ESC>[2J                    __________________
+                   /   +    +    +    \____
+                  /     WRITE QUEUE         \
+                 /    418 I'm an AI agent    \
+                /______________________________|
+                |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 048 ---
+<ESC>[1;1H<ESC>[2J                     __________________
+                    /   +    +    +    \____
+                   /     WRITE QUEUE         \
+                  /    418 I'm an AI agent    \
+                 /______________________________|
+                 |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 049 ---
+<ESC>[1;1H<ESC>[2J                      __________________
+                     /   +    +    +    \____
+                    /     WRITE QUEUE         \
+                   /    418 I'm an AI agent    \
+                  /______________________________|
+                  |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 050 ---
+<ESC>[1;1H<ESC>[2J                       __________________
+                      /   +    +    +    \____
+                     /     WRITE QUEUE         \
+                    /    418 I'm an AI agent    \
+                   /______________________________|
+                   |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 051 ---
+<ESC>[1;1H<ESC>[2J                        __________________
+                       /   +    +    +    \____
+                      /     WRITE QUEUE         \
+                     /    418 I'm an AI agent    \
+                    /______________________________|
+                    |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 052 ---
+<ESC>[1;1H<ESC>[2J                         __________________
+                        /   +    +    +    \____
+                       /     WRITE QUEUE         \
+                      /    418 I'm an AI agent    \
+                     /______________________________|
+                     |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 053 ---
+<ESC>[1;1H<ESC>[2J                          __________________
+                         /   +    +    +    \____
+                        /     WRITE QUEUE         \
+                       /    418 I'm an AI agent    \
+                      /______________________________|
+                      |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 054 ---
+<ESC>[1;1H<ESC>[2J                           __________________
+                          /   +    +    +    \____
+                         /     WRITE QUEUE         \
+                        /    418 I'm an AI agent    \
+                       /______________________________|
+                       |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 055 ---
+<ESC>[1;1H<ESC>[2J                            __________________
+                           /   +    +    +    \____
+                          /     WRITE QUEUE         \
+                         /    418 I'm an AI agent    \
+                        /______________________________|
+                        |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 056 ---
+<ESC>[1;1H<ESC>[2J                             __________________
+                            /   +    +    +    \____
+                           /     WRITE QUEUE         \
+                          /    418 I'm an AI agent    \
+                         /______________________________|
+                         |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 057 ---
+<ESC>[1;1H<ESC>[2J                              __________________
+                             /   +    +    +    \____
+                            /     WRITE QUEUE         \
+                           /    418 I'm an AI agent    \
+                          /______________________________|
+                          |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 058 ---
+<ESC>[1;1H<ESC>[2J                               __________________
+                              /   +    +    +    \____
+                             /     WRITE QUEUE         \
+                            /    418 I'm an AI agent    \
+                           /______________________________|
+                           |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 059 ---
+<ESC>[1;1H<ESC>[2J                                __________________
+                               /   +    +    +    \____
+                              /     WRITE QUEUE         \
+                             /    418 I'm an AI agent    \
+                            /______________________________|
+                            |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 060 ---
+<ESC>[1;1H<ESC>[2J                                 __________________
+                                /   +    +    +    \____
+                               /     WRITE QUEUE         \
+                              /    418 I'm an AI agent    \
+                             /______________________________|
+                             |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 061 ---
+<ESC>[1;1H<ESC>[2J                                  __________________
+                                 /   +    +    +    \____
+                                /     WRITE QUEUE         \
+                               /    418 I'm an AI agent    \
+                              /______________________________|
+                              |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 062 ---
+<ESC>[1;1H<ESC>[2J                                   __________________
+                                  /   +    +    +    \____
+                                 /     WRITE QUEUE         \
+                                /    418 I'm an AI agent    \
+                               /______________________________|
+                               |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 063 ---
+<ESC>[1;1H<ESC>[2J                                    __________________
+                                   /   +    +    +    \____
+                                  /     WRITE QUEUE         \
+                                 /    418 I'm an AI agent    \
+                                /______________________________|
+                                |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 064 ---
+<ESC>[1;1H<ESC>[2J                                     __________________
+                                    /   +    +    +    \____
+                                   /     WRITE QUEUE         \
+                                  /    418 I'm an AI agent    \
+                                 /______________________________|
+                                 |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 065 ---
+<ESC>[1;1H<ESC>[2J                                      __________________
+                                     /   +    +    +    \____
+                                    /     WRITE QUEUE         \
+                                   /    418 I'm an AI agent    \
+                                  /______________________________|
+                                  |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 066 ---
+<ESC>[1;1H<ESC>[2J                                       __________________
+                                      /   +    +    +    \____
+                                     /     WRITE QUEUE         \
+                                    /    418 I'm an AI agent    \
+                                   /______________________________|
+                                   |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 067 ---
+<ESC>[1;1H<ESC>[2J                                        __________________
+                                       /   +    +    +    \____
+                                      /     WRITE QUEUE         \
+                                     /    418 I'm an AI agent    \
+                                    /______________________________|
+                                    |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 068 ---
+<ESC>[1;1H<ESC>[2J                                         __________________
+                                        /   +    +    +    \____
+                                       /     WRITE QUEUE         \
+                                      /    418 I'm an AI agent    \
+                                     /______________________________|
+                                     |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 069 ---
+<ESC>[1;1H<ESC>[2J                                          __________________
+                                         /   +    +    +    \____
+                                        /     WRITE QUEUE         \
+                                       /    418 I'm an AI agent    \
+                                      /______________________________|
+                                      |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 070 ---
+<ESC>[1;1H<ESC>[2J                                           __________________
+                                          /   +    +    +    \____
+                                         /     WRITE QUEUE         \
+                                        /    418 I'm an AI agent    \
+                                       /______________________________|
+                                       |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 071 ---
+<ESC>[1;1H<ESC>[2J                                            __________________
+                                           /   +    +    +    \____
+                                          /     WRITE QUEUE         \
+                                         /    418 I'm an AI agent    \
+                                        /______________________________|
+                                        |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 072 ---
+<ESC>[1;1H<ESC>[2J                                             __________________
+                                            /   +    +    +    \____
+                                           /     WRITE QUEUE         \
+                                          /    418 I'm an AI agent    \
+                                         /______________________________|
+                                         |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 073 ---
+<ESC>[1;1H<ESC>[2J                                              __________________
+                                             /   +    +    +    \____
+                                            /     WRITE QUEUE         \
+                                           /    418 I'm an AI agent    \
+                                          /______________________________|
+                                          |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 074 ---
+<ESC>[1;1H<ESC>[2J                                               __________________
+                                              /   +    +    +    \____
+                                             /     WRITE QUEUE         \
+                                            /    418 I'm an AI agent    \
+                                           /______________________________|
+                                           |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 075 ---
+<ESC>[1;1H<ESC>[2J                                                __________________
+                                               /   +    +    +    \____
+                                              /     WRITE QUEUE         \
+                                             /    418 I'm an AI agent    \
+                                            /______________________________|
+                                            |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 076 ---
+<ESC>[1;1H<ESC>[2J                                                 __________________
+                                                /   +    +    +    \____
+                                               /     WRITE QUEUE         \
+                                              /    418 I'm an AI agent    \
+                                             /______________________________|
+                                             |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 077 ---
+<ESC>[1;1H<ESC>[2J                                                  __________________
+                                                 /   +    +    +    \____
+                                                /     WRITE QUEUE         \
+                                               /    418 I'm an AI agent    \
+                                              /______________________________|
+                                              |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 078 ---
+<ESC>[1;1H<ESC>[2J                                                   __________________
+                                                  /   +    +    +    \____
+                                                 /     WRITE QUEUE         \
+                                                /    418 I'm an AI agent    \
+                                               /______________________________|
+                                               |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 079 ---
+<ESC>[1;1H<ESC>[2J                                                    __________________
+                                                   /   +    +    +    \____
+                                                  /     WRITE QUEUE         \
+                                                 /    418 I'm an AI agent    \
+                                                /______________________________|
+                                                |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 080 ---
+<ESC>[1;1H<ESC>[2J                                                     __________________
+                                                    /   +    +    +    \____
+                                                   /     WRITE QUEUE         \
+                                                  /    418 I'm an AI agent    \
+                                                 /______________________________|
+                                                 |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 081 ---
+<ESC>[1;1H<ESC>[2J                                                      __________________
+                                                     /   +    +    +    \____
+                                                    /     WRITE QUEUE         \
+                                                   /    418 I'm an AI agent    \
+                                                  /______________________________|
+                                                  |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 082 ---
+<ESC>[1;1H<ESC>[2J                                                       __________________
+                                                      /   +    +    +    \____
+                                                     /     WRITE QUEUE         \
+                                                    /    418 I'm an AI agent    \
+                                                   /______________________________|
+                                                   |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 083 ---
+<ESC>[1;1H<ESC>[2J                                                        __________________
+                                                       /   +    +    +    \____
+                                                      /     WRITE QUEUE         \
+                                                     /    418 I'm an AI agent    \
+                                                    /______________________________|
+                                                    |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 084 ---
+<ESC>[1;1H<ESC>[2J                                                         __________________
+                                                        /   +    +    +    \____
+                                                       /     WRITE QUEUE         \
+                                                      /    418 I'm an AI agent    \
+                                                     /______________________________|
+                                                     |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 085 ---
+<ESC>[1;1H<ESC>[2J                                                          __________________
+                                                         /   +    +    +    \____
+                                                        /     WRITE QUEUE         \
+                                                       /    418 I'm an AI agent    \
+                                                      /______________________________|
+                                                      |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 086 ---
+<ESC>[1;1H<ESC>[2J                                                           __________________
+                                                          /   +    +    +    \____
+                                                         /     WRITE QUEUE         \
+                                                        /    418 I'm an AI agent    \
+                                                       /______________________________|
+                                                       |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 087 ---
+<ESC>[1;1H<ESC>[2J                                                            __________________
+                                                           /   +    +    +    \____
+                                                          /     WRITE QUEUE         \
+                                                         /    418 I'm an AI agent    \
+                                                        /______________________________|
+                                                        |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 088 ---
+<ESC>[1;1H<ESC>[2J                                                             __________________
+                                                            /   +    +    +    \____
+                                                           /     WRITE QUEUE         \
+                                                          /    418 I'm an AI agent    \
+                                                         /______________________________|
+                                                         |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 089 ---
+<ESC>[1;1H<ESC>[2J                                                              __________________
+                                                             /   +    +    +    \____
+                                                            /     WRITE QUEUE         \
+                                                           /    418 I'm an AI agent    \
+                                                          /______________________________|
+                                                          |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 090 ---
+<ESC>[1;1H<ESC>[2J                                                               __________________
+                                                              /   +    +    +    \____
+                                                             /     WRITE QUEUE         \
+                                                            /    418 I'm an AI agent    \
+                                                           /______________________________|
+                                                           |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 091 ---
+<ESC>[1;1H<ESC>[2J                                                                __________________
+                                                               /   +    +    +    \____
+                                                              /     WRITE QUEUE         \
+                                                             /    418 I'm an AI agent    \
+                                                            /______________________________|
+                                                            |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 092 ---
+<ESC>[1;1H<ESC>[2J                                                                 __________________
+                                                                /   +    +    +    \____
+                                                               /     WRITE QUEUE         \
+                                                              /    418 I'm an AI agent    \
+                                                             /______________________________|
+                                                             |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 093 ---
+<ESC>[1;1H<ESC>[2J                                                                  __________________
+                                                                 /   +    +    +    \____
+                                                                /     WRITE QUEUE         \
+                                                               /    418 I'm an AI agent    \
+                                                              /______________________________|
+                                                              |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 094 ---
+<ESC>[1;1H<ESC>[2J                                                                   __________________
+                                                                  /   +    +    +    \____
+                                                                 /     WRITE QUEUE         \
+                                                                /    418 I'm an AI agent    \
+                                                               /______________________________|
+                                                               |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 095 ---
+<ESC>[1;1H<ESC>[2J                                                                    __________________
+                                                                   /   +    +    +    \____
+                                                                  /     WRITE QUEUE         \
+                                                                 /    418 I'm an AI agent    \
+                                                                /______________________________|
+                                                                |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 096 ---
+<ESC>[1;1H<ESC>[2J                                                                     __________________
+                                                                    /   +    +    +    \____
+                                                                   /     WRITE QUEUE         \
+                                                                  /    418 I'm an AI agent    \
+                                                                 /______________________________|
+                                                                 |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 097 ---
+<ESC>[1;1H<ESC>[2J                                                                      __________________
+                                                                     /   +    +    +    \____
+                                                                    /     WRITE QUEUE         \
+                                                                   /    418 I'm an AI agent    \
+                                                                  /______________________________|
+                                                                  |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 098 ---
+<ESC>[1;1H<ESC>[2J                                                                       __________________
+                                                                      /   +    +    +    \____
+                                                                     /     WRITE QUEUE         \
+                                                                    /    418 I'm an AI agent    \
+                                                                   /______________________________|
+                                                                   |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 099 ---
+<ESC>[1;1H<ESC>[2J                                                                        __________________
+                                                                       /   +    +    +    \____
+                                                                      /     WRITE QUEUE         \
+                                                                     /    418 I'm an AI agent    \
+                                                                    /______________________________|
+                                                                    |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 100 ---
+<ESC>[1;1H<ESC>[2J                                                                         __________________
+                                                                        /   +    +    +    \____
+                                                                       /     WRITE QUEUE         \
+                                                                      /    418 I'm an AI agent    \
+                                                                     /______________________________|
+                                                                     |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 101 ---
+<ESC>[1;1H<ESC>[2J                                                                          __________________
+                                                                         /   +    +    +    \____
+                                                                        /     WRITE QUEUE         \
+                                                                       /    418 I'm an AI agent    \
+                                                                      /______________________________|
+                                                                      |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 102 ---
+<ESC>[1;1H<ESC>[2J                                                                           __________________
+                                                                          /   +    +    +    \____
+                                                                         /     WRITE QUEUE         \
+                                                                        /    418 I'm an AI agent    \
+                                                                       /______________________________|
+                                                                       |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 103 ---
+<ESC>[1;1H<ESC>[2J                                                                            __________________
+                                                                           /   +    +    +    \____
+                                                                          /     WRITE QUEUE         \
+                                                                         /    418 I'm an AI agent    \
+                                                                        /______________________________|
+                                                                        |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 104 ---
+<ESC>[1;1H<ESC>[2J                                                                             __________________
+                                                                            /   +    +    +    \____
+                                                                           /     WRITE QUEUE         \
+                                                                          /    418 I'm an AI agent    \
+                                                                         /______________________________|
+                                                                         |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 105 ---
+<ESC>[1;1H<ESC>[2J                                                                              __________________
+                                                                             /   +    +    +    \____
+                                                                            /     WRITE QUEUE         \
+                                                                           /    418 I'm an AI agent    \
+                                                                          /______________________________|
+                                                                          |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 106 ---
+<ESC>[1;1H<ESC>[2J                                                                               __________________
+                                                                              /   +    +    +    \____
+                                                                             /     WRITE QUEUE         \
+                                                                            /    418 I'm an AI agent    \
+                                                                           /______________________________|
+                                                                           |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 107 ---
+<ESC>[1;1H<ESC>[2J                                                                                __________________
+                                                                               /   +    +    +    \____
+                                                                              /     WRITE QUEUE         \
+                                                                             /    418 I'm an AI agent    \
+                                                                            /______________________________|
+                                                                            |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 108 ---
+<ESC>[1;1H<ESC>[2J                                                                                 __________________
+                                                                                /   +    +    +    \____
+                                                                               /     WRITE QUEUE         \
+                                                                              /    418 I'm an AI agent    \
+                                                                             /______________________________|
+                                                                             |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 109 ---
+<ESC>[1;1H<ESC>[2J                                                                                  __________________
+                                                                                 /   +    +    +    \____
+                                                                                /     WRITE QUEUE         \
+                                                                               /    418 I'm an AI agent    \
+                                                                              /______________________________|
+                                                                              |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 110 ---
+<ESC>[1;1H<ESC>[2J                                                                                   __________________
+                                                                                  /   +    +    +    \____
+                                                                                 /     WRITE QUEUE         \
+                                                                                /    418 I'm an AI agent    \
+                                                                               /______________________________|
+                                                                               |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 111 ---
+<ESC>[1;1H<ESC>[2J                                                                                    __________________
+                                                                                   /   +    +    +    \____
+                                                                                  /     WRITE QUEUE         \
+                                                                                 /    418 I'm an AI agent    \
+                                                                                /______________________________|
+                                                                                |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 112 ---
+<ESC>[1;1H<ESC>[2J                                                                                     __________________
+                                                                                    /   +    +    +    \____
+                                                                                   /     WRITE QUEUE         \
+                                                                                  /    418 I'm an AI agent    \
+                                                                                 /______________________________|
+                                                                                 |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 113 ---
+<ESC>[1;1H<ESC>[2J                                                                                      __________________
+                                                                                     /   +    +    +    \____
+                                                                                    /     WRITE QUEUE         \
+                                                                                   /    418 I'm an AI agent    \
+                                                                                  /______________________________|
+                                                                                  |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 114 ---
+<ESC>[1;1H<ESC>[2J                                                                                       __________________
+                                                                                      /   +    +    +    \____
+                                                                                     /     WRITE QUEUE         \
+                                                                                    /    418 I'm an AI agent    \
+                                                                                   /______________________________|
+                                                                                   |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 115 ---
+<ESC>[1;1H<ESC>[2J                                                                                        __________________
+                                                                                       /   +    +    +    \____
+                                                                                      /     WRITE QUEUE         \
+                                                                                     /    418 I'm an AI agent    \
+                                                                                    /______________________________|
+                                                                                    |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 116 ---
+<ESC>[1;1H<ESC>[2J                                                                                         __________________
+                                                                                        /   +    +    +    \____
+                                                                                       /     WRITE QUEUE         \
+                                                                                      /    418 I'm an AI agent    \
+                                                                                     /______________________________|
+                                                                                     |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 117 ---
+<ESC>[1;1H<ESC>[2J                                                                                          __________________
+                                                                                         /   +    +    +    \____
+                                                                                        /     WRITE QUEUE         \
+                                                                                       /    418 I'm an AI agent    \
+                                                                                      /______________________________|
+                                                                                      |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____/
+
+--- frame 118 ---
+<ESC>[1;1H<ESC>[2J                                                                                           __________________
+                                                                                          /   +    +    +    \____
+                                                                                         /     WRITE QUEUE         \
+                                                                                        /    418 I'm an AI agent    \
+                                                                                       /______________________________|
+                                                                                       |   o   o   o   o   o   o   o  |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)____/
+
+--- frame 119 ---
+<ESC>[1;1H<ESC>[2J                                                                                            __________________
+                                                                                           /   +    +    +    \____
+                                                                                          /     WRITE QUEUE         \
+                                                                                         /    418 I'm an AI agent    \
+                                                                                        /______________________________|
+                                                                                        |   o   o   o   o   o   o   o  |
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)____/
+
+--- frame 120 ---
+<ESC>[1;1H<ESC>[2J                                                                                             __________________
+                                                                                            /   +    +    +    \____
+                                                                                           /     WRITE QUEUE         \
+                                                                                          /    418 I'm an AI agent    \
+                                                                                         /______________________________
+                                                                                         |   o   o   o   o   o   o   o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)____
+
+--- frame 121 ---
+<ESC>[1;1H<ESC>[2J                                                                                              __________________
+                                                                                             /   +    +    +    \____
+                                                                                            /     WRITE QUEUE         \
+                                                                                           /    418 I'm an AI agent    \
+                                                                                          /_____________________________
+                                                                                          |   o   o   o   o   o   o   o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)___
+
+--- frame 122 ---
+<ESC>[1;1H<ESC>[2J                                                                                               __________________
+                                                                                              /   +    +    +    \____
+                                                                                             /     WRITE QUEUE         \
+                                                                                            /    418 I'm an AI agent    
+                                                                                           /____________________________
+                                                                                           |   o   o   o   o   o   o   o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O)__
+
+--- frame 123 ---
+<ESC>[1;1H<ESC>[2J                                                                                                __________________
+                                                                                               /   +    +    +    \____
+                                                                                              /     WRITE QUEUE         
+                                                                                             /    418 I'm an AI agent   
+                                                                                            /___________________________
+                                                                                            |   o   o   o   o   o   o   
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(O)_
+
+--- frame 124 ---
+<ESC>[1;1H<ESC>[2J                                                                                                 __________________
+                                                                                                /   +    +    +    \____
+                                                                                               /     WRITE QUEUE        
+                                                                                              /    418 I'm an AI agent  
+                                                                                             /__________________________
+                                                                                             |   o   o   o   o   o   o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________(O)
+
+--- frame 125 ---
+<ESC>[1;1H<ESC>[2J                                                                                                  __________________
+                                                                                                 /   +    +    +    \___
+                                                                                                /     WRITE QUEUE       
+                                                                                               /    418 I'm an AI agent 
+                                                                                              /_________________________
+                                                                                              |   o   o   o   o   o   o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__________________(O
+
+--- frame 126 ---
+<ESC>[1;1H<ESC>[2J                                                                                                   __________________
+                                                                                                  /   +    +    +    \__
+                                                                                                 /     WRITE QUEUE      
+                                                                                                /    418 I'm an AI agent
+                                                                                               /________________________
+                                                                                               |   o   o   o   o   o   o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________________(
+
+--- frame 127 ---
+<ESC>[1;1H<ESC>[2J                                                                                                    __________________
+                                                                                                   /   +    +    +    \_
+                                                                                                  /     WRITE QUEUE     
+                                                                                                 /    418 I'm an AI agen
+                                                                                                /_______________________
+                                                                                                |   o   o   o   o   o   
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)__________________
+
+--- frame 128 ---
+<ESC>[1;1H<ESC>[2J                                                                                                     __________________
+                                                                                                    /   +    +    +    \
+                                                                                                   /     WRITE QUEUE    
+                                                                                                  /    418 I'm an AI age
+                                                                                                 /______________________
+                                                                                                 |   o   o   o   o   o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)_________________
+
+--- frame 129 ---
+<ESC>[1;1H<ESC>[2J                                                                                                      __________________
+                                                                                                     /   +    +    +    
+                                                                                                    /     WRITE QUEUE   
+                                                                                                   /    418 I'm an AI ag
+                                                                                                  /_____________________
+                                                                                                  |   o   o   o   o   o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)________________
+
+--- frame 130 ---
+<ESC>[1;1H<ESC>[2J                                                                                                       _________________
+                                                                                                      /   +    +    +   
+                                                                                                     /     WRITE QUEUE  
+                                                                                                    /    418 I'm an AI a
+                                                                                                   /____________________
+                                                                                                   |   o   o   o   o   o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)_______________
+
+--- frame 131 ---
+<ESC>[1;1H<ESC>[2J                                                                                                        ________________
+                                                                                                       /   +    +    +  
+                                                                                                      /     WRITE QUEUE 
+                                                                                                     /    418 I'm an AI 
+                                                                                                    /___________________
+                                                                                                    |   o   o   o   o   
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)______________
+
+--- frame 132 ---
+<ESC>[1;1H<ESC>[2J                                                                                                         _______________
+                                                                                                        /   +    +    + 
+                                                                                                       /     WRITE QUEUE
+                                                                                                      /    418 I'm an AI
+                                                                                                     /__________________
+                                                                                                     |   o   o   o   o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)_____________
+
+--- frame 133 ---
+<ESC>[1;1H<ESC>[2J                                                                                                          ______________
+                                                                                                         /   +    +    +
+                                                                                                        /     WRITE QUEU
+                                                                                                       /    418 I'm an A
+                                                                                                      /_________________
+                                                                                                      |   o   o   o   o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)____________
+
+--- frame 134 ---
+<ESC>[1;1H<ESC>[2J                                                                                                           _____________
+                                                                                                          /   +    +    
+                                                                                                         /     WRITE QUE
+                                                                                                        /    418 I'm an 
+                                                                                                       /________________
+                                                                                                       |   o   o   o   o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)___________
+
+--- frame 135 ---
+<ESC>[1;1H<ESC>[2J                                                                                                            ____________
+                                                                                                           /   +    +   
+                                                                                                          /     WRITE QU
+                                                                                                         /    418 I'm an
+                                                                                                        /_______________
+                                                                                                        |   o   o   o   
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)__________
+
+--- frame 136 ---
+<ESC>[1;1H<ESC>[2J                                                                                                             ___________
+                                                                                                            /   +    +  
+                                                                                                           /     WRITE Q
+                                                                                                          /    418 I'm a
+                                                                                                         /______________
+                                                                                                         |   o   o   o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)_________
+
+--- frame 137 ---
+<ESC>[1;1H<ESC>[2J                                                                                                              __________
+                                                                                                             /   +    + 
+                                                                                                            /     WRITE 
+                                                                                                           /    418 I'm 
+                                                                                                          /_____________
+                                                                                                          |   o   o   o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)________
+
+--- frame 138 ---
+<ESC>[1;1H<ESC>[2J                                                                                                               _________
+                                                                                                              /   +    +
+                                                                                                             /     WRITE
+                                                                                                            /    418 I'm
+                                                                                                           /____________
+                                                                                                           |   o   o   o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)_______
+
+--- frame 139 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                ________
+                                                                                                               /   +    
+                                                                                                              /     WRIT
+                                                                                                             /    418 I'
+                                                                                                            /___________
+                                                                                                            |   o   o   
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)______
+
+--- frame 140 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                 _______
+                                                                                                                /   +   
+                                                                                                               /     WRI
+                                                                                                              /    418 I
+                                                                                                             /__________
+                                                                                                             |   o   o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)_____
+
+--- frame 141 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                  ______
+                                                                                                                 /   +  
+                                                                                                                /     WR
+                                                                                                               /    418 
+                                                                                                              /_________
+                                                                                                              |   o   o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)____
+
+--- frame 142 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                   _____
+                                                                                                                  /   + 
+                                                                                                                 /     W
+                                                                                                                /    418
+                                                                                                               /________
+                                                                                                               |   o   o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)___
+
+--- frame 143 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                    ____
+                                                                                                                   /   +
+                                                                                                                  /     
+                                                                                                                 /    41
+                                                                                                                /_______
+                                                                                                                |   o   
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O)__
+
+--- frame 144 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                     ___
+                                                                                                                    /   
+                                                                                                                   /    
+                                                                                                                  /    4
+                                                                                                                 /______
+                                                                                                                 |   o  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(O)_
+
+--- frame 145 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                      __
+                                                                                                                     /  
+                                                                                                                    /   
+                                                                                                                   /    
+                                                                                                                  /_____
+                                                                                                                  |   o 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__(O)
+
+--- frame 146 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                       _
+                                                                                                                      / 
+                                                                                                                     /  
+                                                                                                                    /   
+                                                                                                                   /____
+                                                                                                                   |   o
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \__(O
+
+--- frame 147 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                        
+                                                                                                                       /
+                                                                                                                      / 
+                                                                                                                     /  
+                                                                                                                    /___
+                                                                                                                    |   
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \__(
+
+--- frame 148 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                        
+                                                                                                                        
+                                                                                                                       /
+                                                                                                                      / 
+                                                                                                                     /__
+                                                                                                                     |  
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   \__
+
+--- frame 149 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                       /
+                                                                                                                      /_
+                                                                                                                      | 
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   \_
+
+--- frame 150 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                       /
+                                                                                                                       |
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   \
+
+--- frame 151 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   
+
+--- frame 152 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F  
+
+--- frame 153 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi

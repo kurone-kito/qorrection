@@ -40,6 +40,9 @@ language: en,ja
 useGitignore: true
 version: '0.2'
 words:
+  # Renderer snapshots intentionally capture right-edge clipping, so
+  # partial frame text can include these truncated word tails.
+  - agen
   - aichat
   - clau
   - claudex
@@ -58,6 +61,7 @@ words:
   - pylint
   - qjunk
   - qorrection
+  - queu
   - qwen
   - rexpect
   - sigcld
@@ -69,4 +73,5 @@ words:
   - toctou
   - unpushed
   - unreplied
+  - ueue
   - xclaude
