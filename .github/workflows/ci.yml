@@ -97,6 +97,22 @@ jobs:
       - name: q9 -V
         run: q9 -V
 
+  pty-e2e:
+    name: PTY E2E (${{ matrix.os }})
+    needs: [fmt, clippy, deny]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test (PTY E2E, unix only)
+        run: cargo test --locked --verbose --test pty_e2e
+
   test:
     name: Test (${{ matrix.os }})
     needs: [fmt, clippy, deny]
