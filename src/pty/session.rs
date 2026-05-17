@@ -79,6 +79,7 @@ use crate::pty::size;
 use crate::pty::spawn::SpawnedSession;
 #[cfg(unix)]
 use crate::signals::{Event as SignalEvent, SignalGuard};
+use crate::trigger::input::SharedRenderProgress;
 use crate::{Error, Result};
 
 /// Polling and join time budgets the supervisor honors.
@@ -142,6 +143,117 @@ impl Deadlines {
     }
 }
 
+#[cfg(unix)]
+pub(crate) enum SessionStatus<C = PtyChild> {
+    Exited(ExitCode),
+    DeferredShutdown(Box<DeferredShutdown<C>>),
+}
+
+#[cfg(not(unix))]
+pub(crate) enum SessionStatus {
+    Exited(ExitCode),
+}
+
+enum SupervisorOutcome<C> {
+    Exited(ExitCode),
+    Shutdown(PendingShutdown<C>),
+}
+
+struct PendingShutdown<C> {
+    child: C,
+    host_to_child: Option<ForwarderHandle>,
+    child_to_host: Option<ForwarderHandle>,
+    host_to_child_render_progress: Option<SharedRenderProgress>,
+    h2c_result: Option<io::Result<ForwarderExit>>,
+    c2h_result: Option<io::Result<ForwarderExit>>,
+    deadlines: Deadlines,
+}
+
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy)]
+enum ShutdownTarget {
+    ProcessGroup(libc::pid_t),
+    Process(libc::pid_t),
+}
+
+#[cfg(unix)]
+impl ShutdownTarget {
+    fn from_parts(
+        process_group_leader: Option<libc::pid_t>,
+        process_id: Option<u32>,
+    ) -> Option<Self> {
+        if let Some(process_group_leader) = process_group_leader.filter(|pid| *pid > 0) {
+            return Some(Self::ProcessGroup(process_group_leader));
+        }
+
+        process_id
+            .and_then(|pid| libc::pid_t::try_from(pid).ok())
+            .filter(|pid| *pid > 0)
+            .map(Self::Process)
+    }
+}
+
+#[cfg(unix)]
+pub(crate) struct DeferredShutdown<C> {
+    child: C,
+    _master: Box<dyn MasterPty + Send>,
+    shutdown_target: Option<ShutdownTarget>,
+    host_to_child: Option<ForwarderHandle>,
+    child_to_host: Option<ForwarderHandle>,
+    host_to_child_render_progress: Option<SharedRenderProgress>,
+    h2c_result: Option<io::Result<ForwarderExit>>,
+    c2h_result: Option<io::Result<ForwarderExit>>,
+    deadlines: Deadlines,
+}
+
+#[cfg(unix)]
+impl<C> DeferredShutdown<C>
+where
+    C: SupervisedChild,
+{
+    pub(crate) fn complete(mut self) -> Result<ExitCode> {
+        let mut guard = KillOnDropGuard::armed(self.child.clone_killer());
+        let target = self.shutdown_target.ok_or_else(|| {
+            wrap_io(
+                "forward SIGTERM to PTY child",
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "no PTY process group leader or child pid was available",
+                ),
+            )
+        })?;
+        signal_shutdown_target(target).map_err(|e| wrap_io("forward SIGTERM to PTY child", e))?;
+        let status = wait_with_budget(
+            &mut self.child,
+            self.deadlines.post_kill_wait_budget,
+            self.deadlines.wait_poll,
+        )?
+        .ok_or_else(|| {
+            wrap_io(
+                "wait for PTY child after forwarded SIGTERM",
+                io::Error::new(io::ErrorKind::TimedOut, "post-SIGTERM wait budget exceeded"),
+            )
+        })?;
+        guard.disarm();
+
+        finish_after_child_exit(
+            status,
+            self.host_to_child.take(),
+            self.child_to_host.take(),
+            self.host_to_child_render_progress.take(),
+            self.h2c_result.take(),
+            self.c2h_result.take(),
+            self.deadlines,
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TickAction {
+    Continue,
+    Shutdown,
+}
+
 /// Trait-level seam for the wrapped child.
 ///
 /// Production binds [`PtyChild`] (a thin wrapper over a
@@ -155,6 +267,8 @@ pub(crate) trait SupervisedChild {
     /// Produce a fresh killer handle. Wraps
     /// `portable_pty::Child::clone_killer`.
     fn clone_killer(&mut self) -> Box<dyn ChildKiller + Send + Sync>;
+    /// Report the child pid when the backend exposes one.
+    fn process_id(&self) -> Option<u32>;
 }
 
 /// Production [`SupervisedChild`] over a `portable-pty` child.
@@ -168,6 +282,9 @@ impl SupervisedChild for PtyChild {
     }
     fn clone_killer(&mut self) -> Box<dyn ChildKiller + Send + Sync> {
         self.child.clone_killer()
+    }
+    fn process_id(&self) -> Option<u32> {
+        self.child.process_id()
     }
 }
 
@@ -234,7 +351,7 @@ impl Drop for KillOnDropGuard {
 /// Production entry point. Wraps [`SpawnedSession`] +
 /// [`IoPump`] into the trait-seam form and delegates to
 /// [`run_pump_session_with`].
-pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<ExitCode> {
+pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<SessionStatus> {
     let SpawnedSession { child, master } = session;
     #[cfg(unix)]
     {
@@ -244,7 +361,8 @@ pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<
     {
         let child = PtyChild { child };
         let _master = master;
-        run_pump_session_with(child, pump, Deadlines::production())
+        let code = run_pump_session_with(child, pump, Deadlines::production())?;
+        Ok(SessionStatus::Exited(code))
     }
 }
 
@@ -253,8 +371,8 @@ fn run_pump_session_unix(
     child: Box<dyn portable_pty::Child + Send + Sync>,
     master: Box<dyn MasterPty + Send>,
     pump: IoPump,
-) -> Result<ExitCode> {
-    run_pump_session_unix_with_setup(child, master, pump, SignalGuard::install_resize_only)
+) -> Result<SessionStatus<PtyChild>> {
+    run_pump_session_unix_with_setup(child, master, pump, SignalGuard::install)
 }
 
 #[cfg(unix)]
@@ -263,7 +381,7 @@ fn run_pump_session_unix_with_setup<Setup>(
     master: Box<dyn MasterPty + Send>,
     pump: IoPump,
     setup: Setup,
-) -> Result<ExitCode>
+) -> Result<SessionStatus<PtyChild>>
 where
     Setup: FnOnce() -> Result<SignalGuard>,
 {
@@ -280,7 +398,7 @@ where
     kill_guard.disarm();
     run_pump_session_with_signals(
         child,
-        master.as_ref(),
+        master,
         &signal_guard,
         size::current_size,
         pump,
@@ -301,27 +419,46 @@ pub(crate) fn run_pump_session_with<C>(
 where
     C: SupervisedChild,
 {
-    run_pump_session_inner(child, pump, deadlines, || Ok(()))
+    match run_pump_session_inner(child, pump, deadlines, || Ok(TickAction::Continue))? {
+        SupervisorOutcome::Exited(code) => Ok(code),
+        SupervisorOutcome::Shutdown(_) => unreachable!("shutdown requires a signal source"),
+    }
 }
 
 #[cfg(unix)]
-fn run_pump_session_with_signals<C, R, S, Q>(
+fn run_pump_session_with_signals<C, S, Q>(
     child: C,
-    resizer: &R,
+    master: Box<dyn MasterPty + Send>,
     signals: &S,
     mut query_size: Q,
     pump: IoPump,
     deadlines: Deadlines,
-) -> Result<ExitCode>
+) -> Result<SessionStatus<C>>
 where
     C: SupervisedChild,
-    R: ResizeTarget + ?Sized,
     S: SignalSource + ?Sized,
     Q: FnMut() -> Option<PtySize>,
 {
-    run_pump_session_inner(child, pump, deadlines, || {
-        handle_resize_events(signals, resizer, &mut query_size)
-    })
+    let shutdown_target =
+        ShutdownTarget::from_parts(master.process_group_leader(), child.process_id());
+    match run_pump_session_inner(child, pump, deadlines, || {
+        handle_signal_events(signals, master.as_ref(), &mut query_size)
+    })? {
+        SupervisorOutcome::Exited(code) => Ok(SessionStatus::Exited(code)),
+        SupervisorOutcome::Shutdown(pending) => Ok(SessionStatus::DeferredShutdown(Box::new(
+            DeferredShutdown {
+                child: pending.child,
+                _master: master,
+                shutdown_target,
+                host_to_child: pending.host_to_child,
+                child_to_host: pending.child_to_host,
+                host_to_child_render_progress: pending.host_to_child_render_progress,
+                h2c_result: pending.h2c_result,
+                c2h_result: pending.c2h_result,
+                deadlines: pending.deadlines,
+            },
+        ))),
+    }
 }
 
 fn run_pump_session_inner<C, Tick>(
@@ -329,10 +466,10 @@ fn run_pump_session_inner<C, Tick>(
     pump: IoPump,
     deadlines: Deadlines,
     mut on_tick: Tick,
-) -> Result<ExitCode>
+) -> Result<SupervisorOutcome<C>>
 where
     C: SupervisedChild,
-    Tick: FnMut() -> Result<()>,
+    Tick: FnMut() -> Result<TickAction>,
 {
     let mut guard = KillOnDropGuard::armed(child.clone_killer());
 
@@ -349,7 +486,18 @@ where
             Ok(None) => {}
             Err(e) => return Err(wrap_io("child try_wait", e)),
         }
-        on_tick()?;
+        if matches!(on_tick()?, TickAction::Shutdown) {
+            guard.disarm();
+            return Ok(SupervisorOutcome::Shutdown(PendingShutdown {
+                child,
+                host_to_child: h2c,
+                child_to_host: c2h,
+                host_to_child_render_progress,
+                h2c_result,
+                c2h_result,
+                deadlines,
+            }));
+        }
 
         // Harvest finished forwarders so we can inspect their
         // results in subsequent ticks. This is a non-blocking
@@ -459,54 +607,49 @@ where
     // Wait consumed a status → guard's job is done.
     guard.disarm();
 
-    // Phase 2: drain remaining forwarders within budget.
-    if let Some(h) = h2c.take() {
-        h.cancel();
-        let base_budget = if h.cancel_wakes_read() {
-            deadlines.host_to_child_post_exit_budget
-        } else {
-            Duration::ZERO
-        };
-        let budget = IoPump::host_to_child_post_exit_budget(
-            host_to_child_render_progress.as_ref(),
-            base_budget,
-        );
-        h2c_result = Some(join_with_budget(h, budget));
-    }
-    if let Some(h) = c2h.take() {
-        c2h_result = Some(join_with_budget(h, deadlines.forwarder_join_budget));
-    }
-    log_forwarder_outcome(Direction::HostToChild, h2c_result);
-    log_forwarder_outcome(Direction::ChildToHost, c2h_result);
-
-    map_exit_status(status)
+    let code = finish_after_child_exit(
+        status,
+        h2c.take(),
+        c2h.take(),
+        host_to_child_render_progress,
+        h2c_result,
+        c2h_result,
+        deadlines,
+    )?;
+    Ok(SupervisorOutcome::Exited(code))
 }
 
 #[cfg(unix)]
-fn handle_resize_events<S, R, Q>(signals: &S, resizer: &R, query_size: &mut Q) -> Result<()>
+fn handle_signal_events<S, R, Q>(signals: &S, resizer: &R, query_size: &mut Q) -> Result<TickAction>
 where
     S: SignalSource + ?Sized,
     R: ResizeTarget + ?Sized,
     Q: FnMut() -> Option<PtySize>,
 {
-    let saw_resize = signals
+    let mut saw_resize = false;
+    for event in signals
         .drain_events()
         .map_err(|e| wrap_io("signal drain", e))?
-        .into_iter()
-        .any(|event| matches!(event, SignalEvent::Resize));
+    {
+        match event {
+            SignalEvent::Resize => saw_resize = true,
+            SignalEvent::Shutdown => return Ok(TickAction::Shutdown),
+        }
+    }
+
     if !saw_resize {
-        return Ok(());
+        return Ok(TickAction::Continue);
     }
 
     let Some(size) = query_size() else {
         tracing::debug!("supervisor: skipping SIGWINCH resize because host size was unavailable");
-        return Ok(());
+        return Ok(TickAction::Continue);
     };
 
     resizer
         .resize_pty(size)
         .map_err(|e| Error::Pty(e.context("apply SIGWINCH PTY resize")))?;
-    Ok(())
+    Ok(TickAction::Continue)
 }
 
 fn wrap_io(context: &'static str, e: io::Error) -> Error {
@@ -543,6 +686,66 @@ fn wait_with_budget<C: SupervisedChild>(
         }
         std::thread::sleep(poll);
     }
+}
+
+#[cfg(unix)]
+fn signal_shutdown_target(target: ShutdownTarget) -> io::Result<()> {
+    let rc = match target {
+        ShutdownTarget::ProcessGroup(process_group_leader) => unsafe {
+            libc::killpg(process_group_leader, libc::SIGTERM)
+        },
+        ShutdownTarget::Process(process_id) => unsafe { libc::kill(process_id, libc::SIGTERM) },
+    };
+    if rc == 0 {
+        return Ok(());
+    }
+
+    let err = io::Error::last_os_error();
+    if matches!(err.raw_os_error(), Some(code) if code == libc::ESRCH) {
+        tracing::debug!(
+            ?target,
+            error = %err,
+            "supervisor: shutdown target exited before SIGTERM forward"
+        );
+        return Ok(());
+    }
+
+    Err(err)
+}
+
+fn finish_after_child_exit(
+    status: ExitStatus,
+    mut host_to_child: Option<ForwarderHandle>,
+    mut child_to_host: Option<ForwarderHandle>,
+    host_to_child_render_progress: Option<SharedRenderProgress>,
+    mut h2c_result: Option<io::Result<ForwarderExit>>,
+    mut c2h_result: Option<io::Result<ForwarderExit>>,
+    deadlines: Deadlines,
+) -> Result<ExitCode> {
+    // Phase 2: drain remaining forwarders within budget.
+    if let Some(h) = host_to_child.take() {
+        h.cancel();
+        let base_budget = if h.cancel_wakes_read() {
+            deadlines.host_to_child_post_exit_budget
+        } else {
+            Duration::ZERO
+        };
+        #[cfg(unix)]
+        let budget = IoPump::host_to_child_post_exit_budget(
+            host_to_child_render_progress.as_ref(),
+            base_budget,
+        );
+        #[cfg(not(unix))]
+        let budget = base_budget;
+        h2c_result = Some(join_with_budget(h, budget));
+    }
+    if let Some(h) = child_to_host.take() {
+        c2h_result = Some(join_with_budget(h, deadlines.forwarder_join_budget));
+    }
+    log_forwarder_outcome(Direction::HostToChild, h2c_result);
+    log_forwarder_outcome(Direction::ChildToHost, c2h_result);
+
+    map_exit_status(status)
 }
 
 /// Non-blocking peek + extract. If the handle is finished, join
@@ -693,6 +896,9 @@ mod tests {
             Box::new(MockKiller {
                 state: Arc::clone(&self.state),
             })
+        }
+        fn process_id(&self) -> Option<u32> {
+            Some(42_042)
         }
     }
 
@@ -1379,26 +1585,69 @@ mod tests {
 
     #[cfg(unix)]
     #[derive(Default)]
-    struct MockResizer {
+    struct MockMasterState {
         calls: Mutex<Vec<PtySize>>,
         fail: bool,
+        process_group_leader: Option<libc::pid_t>,
     }
 
     #[cfg(unix)]
-    impl MockResizer {
-        fn calls(&self) -> Vec<PtySize> {
-            self.calls.lock().unwrap().clone()
+    struct MockMaster {
+        state: Arc<MockMasterState>,
+    }
+
+    #[cfg(unix)]
+    impl MockMaster {
+        fn shared(
+            fail: bool,
+            process_group_leader: Option<libc::pid_t>,
+        ) -> (Self, Arc<MockMasterState>) {
+            let state = Arc::new(MockMasterState {
+                calls: Mutex::new(Vec::new()),
+                fail,
+                process_group_leader,
+            });
+            (
+                Self {
+                    state: Arc::clone(&state),
+                },
+                state,
+            )
         }
     }
 
     #[cfg(unix)]
-    impl ResizeTarget for MockResizer {
-        fn resize_pty(&self, size: PtySize) -> anyhow::Result<()> {
-            if self.fail {
+    impl MasterPty for MockMaster {
+        fn resize(&self, size: PtySize) -> anyhow::Result<()> {
+            if self.state.fail {
                 anyhow::bail!("synthetic resize failure");
             }
-            self.calls.lock().unwrap().push(size);
+            self.state.calls.lock().unwrap().push(size);
             Ok(())
+        }
+
+        fn get_size(&self) -> anyhow::Result<PtySize> {
+            Ok(pty_size(80, 24))
+        }
+
+        fn try_clone_reader(&self) -> anyhow::Result<Box<dyn io::Read + Send>> {
+            Ok(Box::new(Cursor::new(Vec::<u8>::new())))
+        }
+
+        fn take_writer(&self) -> anyhow::Result<Box<dyn io::Write + Send>> {
+            Ok(Box::new(Vec::<u8>::new()))
+        }
+
+        fn process_group_leader(&self) -> Option<libc::pid_t> {
+            self.state.process_group_leader
+        }
+
+        fn as_raw_fd(&self) -> Option<std::os::fd::RawFd> {
+            None
+        }
+
+        fn tty_name(&self) -> Option<std::path::PathBuf> {
+            None
         }
     }
 
@@ -1409,6 +1658,16 @@ mod tests {
             rows,
             pixel_width: 0,
             pixel_height: 0,
+        }
+    }
+
+    #[cfg(unix)]
+    fn expect_exited<C>(status: SessionStatus<C>) -> ExitCode {
+        match status {
+            SessionStatus::Exited(code) => code,
+            SessionStatus::DeferredShutdown(_) => {
+                panic!("signal-free resize path should not defer shutdown")
+            }
         }
     }
 
@@ -1440,26 +1699,28 @@ mod tests {
             SignalEvent::Resize,
             SignalEvent::Resize,
         ]]);
-        let resizer = MockResizer::default();
+        let (master, state) = MockMaster::shared(false, None);
         let mut query_calls = 0usize;
         let (pump, _exited) = cancellable_h2c_quiet_c2h_pump();
 
-        let code = run_pump_session_with_signals(
-            child,
-            &resizer,
-            &signals,
-            || {
-                query_calls += 1;
-                Some(pty_size(132, 44))
-            },
-            pump,
-            fast_deadlines(),
-        )
-        .expect("clean exit with resize must be Ok");
+        let code = expect_exited(
+            run_pump_session_with_signals(
+                child,
+                Box::new(master),
+                &signals,
+                || {
+                    query_calls += 1;
+                    Some(pty_size(132, 44))
+                },
+                pump,
+                fast_deadlines(),
+            )
+            .expect("clean exit with resize must be Ok"),
+        );
 
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
         assert_eq!(query_calls, 1, "resize batch should query host size once");
-        assert_eq!(resizer.calls(), vec![pty_size(132, 44)]);
+        assert_eq!(state.calls.lock().unwrap().clone(), vec![pty_size(132, 44)]);
     }
 
     #[cfg(unix)]
@@ -1467,21 +1728,26 @@ mod tests {
     fn resize_events_ignore_unusable_runtime_size() {
         let child = MockChild::new(ExitStatus::with_exit_code(0), 1);
         let signals = MockSignalSource::new([vec![SignalEvent::Resize]]);
-        let resizer = MockResizer::default();
+        let (master, state) = MockMaster::shared(false, None);
         let (pump, _exited) = cancellable_h2c_quiet_c2h_pump();
 
-        let code = run_pump_session_with_signals(
-            child,
-            &resizer,
-            &signals,
-            || None,
-            pump,
-            fast_deadlines(),
-        )
-        .expect("clean exit with skipped resize must be Ok");
+        let code = expect_exited(
+            run_pump_session_with_signals(
+                child,
+                Box::new(master),
+                &signals,
+                || None,
+                pump,
+                fast_deadlines(),
+            )
+            .expect("clean exit with skipped resize must be Ok"),
+        );
 
         assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
-        assert!(resizer.calls().is_empty(), "no resize should be applied");
+        assert!(
+            state.calls.lock().unwrap().is_empty(),
+            "no resize should be applied"
+        );
     }
 
     #[cfg(unix)]
@@ -1490,25 +1756,84 @@ mod tests {
         let child = MockChild::new(ExitStatus::with_exit_code(0), 1_000_000);
         let handle = child.handle();
         let signals = MockSignalSource::new([vec![SignalEvent::Resize]]);
-        let resizer = MockResizer {
-            calls: Mutex::new(Vec::new()),
-            fail: true,
-        };
+        let (master, _state) = MockMaster::shared(true, None);
 
         let err = run_pump_session_with_signals(
             child,
-            &resizer,
+            Box::new(master),
             &signals,
             || Some(pty_size(100, 30)),
             quiet_pump(),
             fast_deadlines(),
-        )
-        .expect_err("resize failure must surface");
+        );
+        let err = match err {
+            Ok(_) => panic!("resize failure must surface"),
+            Err(err) => err,
+        };
 
         assert!(matches!(err, Error::Pty(_)), "got {err:?}");
         assert!(
             handle.lock().unwrap().kills >= 1,
             "resize failure must kill the child on unwind"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_event_returns_deferred_shutdown() {
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 1_000_000);
+        let handle = child.handle();
+        let signals = MockSignalSource::new([vec![SignalEvent::Shutdown]]);
+        let (master, _state) = MockMaster::shared(false, Some(42_042));
+
+        let status = run_pump_session_with_signals(
+            child,
+            Box::new(master),
+            &signals,
+            || Some(pty_size(100, 30)),
+            quiet_pump(),
+            fast_deadlines(),
+        )
+        .expect("shutdown event should defer completion");
+
+        match status {
+            SessionStatus::Exited(code) => {
+                panic!("shutdown event should defer, got immediate exit {code:?}")
+            }
+            SessionStatus::DeferredShutdown(_) => {}
+        }
+        assert_eq!(
+            handle.lock().unwrap().kills,
+            0,
+            "deferred shutdown must not trigger the SIGHUP kill guard on return"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deferred_shutdown_kills_child_on_completion_error() {
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 1_000_000);
+        let handle = child.handle();
+
+        let err = DeferredShutdown {
+            child,
+            _master: Box::new(DummyMaster),
+            shutdown_target: None,
+            host_to_child: None,
+            child_to_host: None,
+            host_to_child_render_progress: None,
+            h2c_result: None,
+            c2h_result: None,
+            deadlines: fast_deadlines(),
+        }
+        .complete()
+        .expect_err("missing shutdown target must surface");
+
+        assert!(matches!(err, Error::Pty(_)), "got {err:?}");
+        assert_eq!(
+            handle.lock().unwrap().kills,
+            1,
+            "completion failure must still best-effort kill the child on drop"
         );
     }
 
@@ -1529,8 +1854,11 @@ mod tests {
             Box::new(DummyMaster),
             quiet_pump(),
             || Err(io::Error::new(io::ErrorKind::AlreadyExists, "synthetic setup failure").into()),
-        )
-        .expect_err("setup failure must surface");
+        );
+        let err = match err {
+            Ok(_) => panic!("setup failure must surface"),
+            Err(err) => err,
+        };
 
         assert!(
             matches!(&err, Error::Terminal(io_err) if io_err.kind() == io::ErrorKind::AlreadyExists),
