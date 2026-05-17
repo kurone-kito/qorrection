@@ -224,3 +224,32 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  publish-crates-io:
+    name: Publish to crates.io (manual)
+    needs: build
+    runs-on: ubuntu-latest
+    # Runs only on explicit workflow_dispatch to prevent accidental
+    # publishes on every tag push.  The user must manually trigger
+    # this job after verifying the GitHub Release looks correct.
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Show version being published
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkgid="$(cargo pkgid -p qorrection)"
+          version="${pkgid##*@}"
+          echo "Publishing qorrection ${version} from ref ${GITHUB_REF_NAME}"
+      - name: cargo publish --dry-run
+        run: cargo publish --dry-run --locked
+      - name: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked
