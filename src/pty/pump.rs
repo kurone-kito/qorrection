@@ -18,7 +18,7 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::os::fd::RawFd;
 
-use crate::anim::render::{draw_frame, render_plan, FRAME_DELAY};
+use crate::anim::render::{draw_frame, render_frame_count, render_plan, FRAME_DELAY};
 use crate::pty::forward::{
     spawn_cancellable_forwarder, spawn_forwarder, CancelHandle, CancellableReader, Direction,
     ForwarderHandle,
@@ -244,15 +244,31 @@ fn render_animation<W>(
 where
     W: Write,
 {
-    let Some(plan) = render_plan(outcome, render_cols()) else {
+    let cols = render_cols();
+    let Some(frame_count) = render_frame_count(outcome, cols) else {
+        return Ok(());
+    };
+    if frame_count == 0 {
+        return Ok(());
+    }
+
+    // Reserve one final progress unit for the terminal-guard
+    // drop so the supervisor keeps waiting until the primary
+    // screen and cursor are restored.
+    frames_remaining.store(frame_count.saturating_add(1), Ordering::SeqCst);
+    let _render_progress = RenderProgressGuard { frames_remaining };
+
+    let Some(plan) = render_plan(outcome, cols) else {
         return Ok(());
     };
     if plan.frames.is_empty() {
         return Ok(());
     }
-
-    frames_remaining.store(plan.frames.len(), Ordering::SeqCst);
-    let _render_progress = RenderProgressGuard { frames_remaining };
+    debug_assert_eq!(
+        plan.frames.len(),
+        frame_count,
+        "render frame count drifted from the actual plan"
+    );
     let mut presentation =
         LockedPresentation::acquire(host_stdout.lock()).map_err(io::Error::other)?;
     for frame in &plan.frames {

@@ -296,14 +296,26 @@ mod unix {
     fn q9_armed_child_exit_during_animation_exits_nonzero_without_hanging(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let helper = support::ArmedHelper::ready_then_exit_seven();
+        let release_dir = tempfile::tempdir()?;
+        let release_file = release_dir.path().join("release");
         let mut command = q9_with_tty_size(LONG_ANIMATION_COLS, PTY_ROWS);
-        command.env("PATH", helper.path()).arg(helper.command());
+        command
+            .env("PATH", helper.path())
+            .env(
+                support::READY_THEN_EXIT_RELEASE_FILE_ENV,
+                release_file.as_os_str(),
+            )
+            .arg(helper.command());
 
         let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
         assert_eq!(session.read_line()?, "READY");
         session.send_line(":q")?;
 
         let _before_animation = session.exp_string("\u{1b}[?1049h")?;
+        // Release the helper only after q9 has entered the alt
+        // screen so the child exit deterministically lands during
+        // the live animation instead of racing the test driver.
+        std::fs::write(&release_file, b"release")?;
         let animation = session.exp_string("\u{1b}[?1049l")?;
         let normalized_animation = animation.replace("\r\n", "\n");
         assert!(

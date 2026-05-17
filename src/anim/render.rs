@@ -134,6 +134,29 @@ pub(crate) fn render_plan(outcome: Outcome, cols: u16) -> Option<RenderPlan> {
     }
 }
 
+pub(crate) fn render_frame_count(outcome: Outcome, cols: u16) -> Option<usize> {
+    let b = bucket(cols);
+    match outcome {
+        Outcome::None => None,
+        Outcome::Q => Some(match b {
+            WidthBucket::Tiny => 1,
+            WidthBucket::Small => scene::tiny_frame_count(cols),
+            WidthBucket::Medium | WidthBucket::Large => scene::q_frame_count(cols),
+        }),
+        Outcome::Wq => Some(match b {
+            WidthBucket::Tiny => 1,
+            WidthBucket::Small => scene::tiny_frame_count(cols),
+            WidthBucket::Medium => scene::q_frame_count(cols),
+            WidthBucket::Large => scene::wq_frame_count(cols),
+        }),
+        Outcome::QBang => Some(match b {
+            WidthBucket::Tiny => 1,
+            WidthBucket::Small => scene::tiny_bang_frame_count(cols),
+            WidthBucket::Medium | WidthBucket::Large => scene::bang_frame_count(cols),
+        }),
+    }
+}
+
 fn fallback_plan(trigger: fallback::Trigger) -> RenderPlan {
     RenderPlan {
         kind: PlanKind::Fallback,
@@ -187,6 +210,32 @@ mod tests {
     #[test]
     fn render_plan_returns_none_when_no_trigger_fired() {
         assert_eq!(render_plan(Outcome::None, 120), None);
+    }
+
+    #[test]
+    fn render_frame_count_matches_plan_lengths() {
+        for (outcome, cols) in [
+            (Outcome::Q, 39),
+            (Outcome::Q, 40),
+            (Outcome::Q, 80),
+            (Outcome::Q, 120),
+            (Outcome::Wq, 0),
+            (Outcome::Wq, 40),
+            (Outcome::Wq, 119),
+            (Outcome::Wq, 120),
+            (Outcome::QBang, 12),
+            (Outcome::QBang, 40),
+            (Outcome::QBang, 80),
+            (Outcome::QBang, 120),
+        ] {
+            let plan = render_plan(outcome, cols).expect("non-none outcomes must render");
+            let count = render_frame_count(outcome, cols).expect("non-none outcomes must count");
+            assert_eq!(
+                count,
+                plan.frames.len(),
+                "{outcome:?} at {cols} cols counted differently from its plan"
+            );
+        }
     }
 
     #[test]

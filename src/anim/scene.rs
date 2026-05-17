@@ -30,6 +30,10 @@ pub fn q(cols: u16) -> Vec<String> {
     sweep(car::STD, cols)
 }
 
+pub(crate) fn q_frame_count(cols: u16) -> usize {
+    sweep_frame_count(car::STD, cols)
+}
+
 /// Build the compact 40-79 column ambulance scene.
 ///
 /// This is the renderer's "small bucket" degrade path: when the
@@ -40,6 +44,10 @@ pub fn tiny(cols: u16) -> Vec<String> {
     sweep(car::TINY, cols)
 }
 
+pub(crate) fn tiny_frame_count(cols: u16) -> usize {
+    sweep_frame_count(car::TINY, cols)
+}
+
 /// Build the larger `:wq` ambulance scene.
 ///
 /// This timeline follows the same sweep / siren policy as [`q`]
@@ -48,6 +56,10 @@ pub fn tiny(cols: u16) -> Vec<String> {
 /// full asset is visible.
 pub fn wq(cols: u16) -> Vec<String> {
     sweep(car::BIG, cols)
+}
+
+pub(crate) fn wq_frame_count(cols: u16) -> usize {
+    sweep_frame_count(car::BIG, cols)
 }
 
 /// Build the `:q!` nine-car parade scene.
@@ -61,6 +73,10 @@ pub fn bang(cols: u16) -> Vec<String> {
     parade(car::STD, cols, BANG_CARS)
 }
 
+pub(crate) fn bang_frame_count(cols: u16) -> usize {
+    parade_frame_count(car::STD, cols, BANG_CARS)
+}
+
 /// Build the small-bucket `:q!` parade.
 ///
 /// The renderer uses this when `40 <= cols < 80`: the trigger keeps
@@ -68,6 +84,10 @@ pub fn bang(cols: u16) -> Vec<String> {
 /// narrow viewport still gets a recognisably animated convoy.
 pub fn tiny_bang(cols: u16) -> Vec<String> {
     parade(car::TINY, cols, BANG_CARS)
+}
+
+pub(crate) fn tiny_bang_frame_count(cols: u16) -> usize {
+    parade_frame_count(car::TINY, cols, BANG_CARS)
 }
 
 /// Sweep one ASCII asset across the visible width using the
@@ -90,6 +110,17 @@ fn sweep(car_asset: &str, cols: u16) -> Vec<String> {
     }
 
     frames
+}
+
+fn sweep_frame_count(car_asset: &str, cols: u16) -> usize {
+    if cols == 0 {
+        return 0;
+    }
+
+    let car_width = car::max_width(car_asset) as i32;
+    let start_x = 1 - car_width;
+    let end_x = i32::from(cols) - 1;
+    (end_x - start_x + 1) as usize
 }
 
 /// Move a multi-car convoy across the visible width.
@@ -117,6 +148,20 @@ fn parade(car_asset: &str, cols: u16, cars: usize) -> Vec<String> {
     }
 
     frames
+}
+
+fn parade_frame_count(car_asset: &str, cols: u16, cars: usize) -> usize {
+    if cols == 0 || cars == 0 {
+        return 0;
+    }
+
+    let car_width = car::max_width(car_asset);
+    let convoy_width = cars * car_width;
+    let car_lines = car::lines(car_asset);
+    let (car_left, car_right) = visible_bounds(&car_lines);
+    let start_x = -(((convoy_width - car_width) + car_right) as i32);
+    let end_x = i32::from(cols) - 1 - car_left as i32;
+    (end_x - start_x + 1) as usize
 }
 
 /// Find the leftmost and rightmost non-space columns in one asset.
