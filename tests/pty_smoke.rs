@@ -113,12 +113,16 @@ fn portable_pty_echoes_hi() {
 
     // On Windows ConPTY, `try_wait` does not report process exit while
     // the master handle is open. Close the full master first so the
-    // OS process-handle wait can proceed. Sleep briefly beforehand to
-    // let `cmd.exe` flush its output into the ConPTY buffer before the
-    // session is torn down.
+    // OS process-handle wait can proceed.
+    //
+    // cmd.exe with ConPTY performs extensive terminal initialisation
+    // (escape sequences, window-title, cursor management) before running
+    // the user command. 3 s is a conservative budget that covers even
+    // slow CI runners; the captured output includes both init sequences
+    // and the actual "hi" from `echo hi`.
     #[cfg(windows)]
     {
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(3000));
         drop(master.take());
     }
 
