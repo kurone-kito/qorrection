@@ -154,6 +154,31 @@ cargo test --tests                # integration + E2E
 cargo insta review                # review pending snapshots
 ```
 
+## Release build verification
+
+Before every release, trigger the `release.yml` workflow via
+`workflow_dispatch` to verify all five cross-compilation targets
+build successfully and produce artifacts:
+
+```sh
+gh workflow run release.yml --ref main
+```
+
+When run without a tag, the `verify-tag` job is skipped and the
+`build` matrix still runs, producing archives for all five targets:
+
+| Target                     | Platform      | Archive |
+| -------------------------- | ------------- | ------- |
+| `x86_64-unknown-linux-musl` | Linux x64    | tar.gz  |
+| `aarch64-unknown-linux-musl` | Linux arm64 | tar.gz  |
+| `x86_64-apple-darwin`       | macOS x64    | tar.gz  |
+| `aarch64-apple-darwin`      | macOS arm64  | tar.gz  |
+| `x86_64-pc-windows-msvc`    | Windows x64  | zip     |
+
+Artifacts are uploaded to the workflow run and available for 90 days.
+The `publish` job (GitHub Release creation) is gated on the tag path
+and does not run on `workflow_dispatch`.
+
 ## Adding a test
 
 1. Pick the lowest layer that can express the behavior. Pure
