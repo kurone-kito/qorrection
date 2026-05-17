@@ -3,6 +3,9 @@
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 
+#[allow(dead_code)]
+pub const READY_THEN_EXIT_RELEASE_FILE_ENV: &str = "QORRECTION_HELPER_RELEASE_FILE";
+
 /// Tempdir-backed helper named like an armed AI CLI.
 ///
 /// The helper lives at the front of a synthetic PATH so tests
@@ -39,6 +42,22 @@ impl ArmedHelper {
         Self::from_scripts(
             "#!/bin/sh\nprintf 'plain-output\\n'\n",
             "@echo off\r\necho plain-output\r\n",
+        )
+    }
+
+    /// Create a helper that announces readiness, then exits 7
+    /// after the driving test releases it through a file path in
+    /// [`READY_THEN_EXIT_RELEASE_FILE_ENV`].
+    ///
+    /// The out-of-band release file makes the mid-animation exit
+    /// deterministic relative to the parent PTY entering the
+    /// alternate screen, avoiding short wall-clock races on
+    /// loaded CI hosts.
+    #[allow(dead_code)]
+    pub fn ready_then_exit_seven() -> Self {
+        Self::from_scripts(
+            "#!/bin/sh\nprintf 'READY\\n'\nrelease_file=${QORRECTION_HELPER_RELEASE_FILE:?}\nwhile [ ! -f \"$release_file\" ]; do\n  sleep 0.05\ndone\nexit 7\n",
+            "@echo off\r\necho READY\r\npowershell -NoProfile -Command \"$path=$env:QORRECTION_HELPER_RELEASE_FILE; if (-not $path) { exit 7 }; while (-not (Test-Path -LiteralPath $path)) { Start-Sleep -Milliseconds 50 }; exit 7\"\r\nexit /b %ERRORLEVEL%\r\n",
         )
     }
 

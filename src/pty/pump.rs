@@ -9,23 +9,38 @@
 //! by PR 4 (#33).
 
 use std::io::{self, Read, Write};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex, MutexGuard,
+};
+use std::time::Duration;
 
 #[cfg(unix)]
 use std::os::fd::RawFd;
 
-use crate::anim::render::{draw_frame, render_plan, FRAME_DELAY};
+use crate::anim::render::{draw_frame, render_frame_count, render_plan, FRAME_DELAY};
 use crate::pty::forward::{
     spawn_cancellable_forwarder, spawn_forwarder, CancelHandle, CancellableReader, Direction,
     ForwarderHandle,
 };
 use crate::pty::spawn::SpawnedSession;
 use crate::trigger::{
-    input::{shared_input_pump, InputInterceptor},
+    input::{shared_input_pump, shared_render_progress, InputInterceptor, SharedRenderProgress},
     output::OutputArbiter,
     parser::Outcome,
 };
 use crate::{Error, Result};
+
+// Hosted macOS runners can spend roughly one extra 50 ms tick
+// per frame on draw/flush scheduling beyond the nominal hold
+// delay, so budget each remaining frame as "draw + hold" rather
+// than "hold only" when the supervisor waits for an in-flight
+// animation to restore the primary screen.
+const RENDER_FRAME_BUDGET_MULTIPLIER: u32 = 2;
+// Even after the last frame draw returns, give the renderer a
+// little extra wall-clock slack to run the terminal-guard drop
+// and flush the leave-alt-screen sequence on contended CI hosts.
+const RENDER_JOIN_SLACK: Duration = Duration::from_secs(2);
 
 /// Owning bundle of the host↔child forwarder threads.
 ///
@@ -35,6 +50,45 @@ use crate::{Error, Result};
 pub(crate) struct IoPump {
     pub(crate) host_to_child: ForwarderHandle,
     pub(crate) child_to_host: ForwarderHandle,
+    pub(crate) host_to_child_render_progress: Option<SharedRenderProgress>,
+}
+
+impl IoPump {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        ForwarderHandle,
+        ForwarderHandle,
+        Option<SharedRenderProgress>,
+    ) {
+        (
+            self.host_to_child,
+            self.child_to_host,
+            self.host_to_child_render_progress,
+        )
+    }
+
+    pub(crate) fn host_to_child_post_exit_budget(
+        render_progress: Option<&SharedRenderProgress>,
+        base: Duration,
+    ) -> Duration {
+        let Some(render_progress) = render_progress else {
+            return base;
+        };
+        let frames_remaining = render_progress.load(Ordering::SeqCst);
+        if frames_remaining == 0 {
+            return base;
+        }
+
+        let frame_budget_units =
+            frames_remaining.saturating_mul(RENDER_FRAME_BUDGET_MULTIPLIER as usize);
+        let frame_budget_units = u32::try_from(frame_budget_units).unwrap_or(u32::MAX);
+        let render_budget = FRAME_DELAY
+            .checked_mul(frame_budget_units)
+            .unwrap_or(Duration::from_secs(60))
+            + RENDER_JOIN_SLACK;
+        base.max(render_budget)
+    }
 }
 
 enum HostToChildWriter<W> {
@@ -172,22 +226,55 @@ fn render_cols() -> u16 {
     }
 }
 
-fn render_animation<W>(host_stdout: &SharedWriter<W>, outcome: Outcome) -> io::Result<()>
+struct RenderProgressGuard<'a> {
+    frames_remaining: &'a AtomicUsize,
+}
+
+impl Drop for RenderProgressGuard<'_> {
+    fn drop(&mut self) {
+        self.frames_remaining.store(0, Ordering::SeqCst);
+    }
+}
+
+fn render_animation<W>(
+    host_stdout: &SharedWriter<W>,
+    outcome: Outcome,
+    frames_remaining: &AtomicUsize,
+) -> io::Result<()>
 where
     W: Write,
 {
-    let Some(plan) = render_plan(outcome, render_cols()) else {
+    let cols = render_cols();
+    let Some(frame_count) = render_frame_count(outcome, cols) else {
+        return Ok(());
+    };
+    if frame_count == 0 {
+        return Ok(());
+    }
+
+    // Reserve one final progress unit for the terminal-guard
+    // drop so the supervisor keeps waiting until the primary
+    // screen and cursor are restored.
+    frames_remaining.store(frame_count.saturating_add(1), Ordering::SeqCst);
+    let _render_progress = RenderProgressGuard { frames_remaining };
+
+    let Some(plan) = render_plan(outcome, cols) else {
         return Ok(());
     };
     if plan.frames.is_empty() {
         return Ok(());
     }
-
+    debug_assert_eq!(
+        plan.frames.len(),
+        frame_count,
+        "render frame count drifted from the actual plan"
+    );
     let mut presentation =
         LockedPresentation::acquire(host_stdout.lock()).map_err(io::Error::other)?;
     for frame in &plan.frames {
         draw_frame(presentation.writer(), frame).map_err(io::Error::other)?;
         std::thread::sleep(FRAME_DELAY);
+        frames_remaining.fetch_sub(1, Ordering::SeqCst);
     }
     Ok(())
 }
@@ -196,6 +283,7 @@ struct TriggerWiring<PtyW, HOut> {
     host_to_child: HostToChildWriter<PtyW>,
     child_to_host: ChildToHostWriter<SharedWriter<HOut>>,
     input: Option<crate::trigger::input::SharedInputPump>,
+    render_progress: Option<SharedRenderProgress>,
 }
 
 fn wire_trigger_io<PtyW, HOut>(
@@ -211,23 +299,29 @@ where
     if armed {
         let input = shared_input_pump();
         let render_stdout = shared_stdout.clone();
+        let render_progress = shared_render_progress();
+        let callback_render_progress = render_progress.clone();
         TriggerWiring {
             host_to_child: HostToChildWriter::Armed(InputInterceptor::new(
                 pty_writer,
                 input.clone(),
-                move |outcome| render_animation(&render_stdout, outcome),
+                move |outcome| {
+                    render_animation(&render_stdout, outcome, callback_render_progress.as_ref())
+                },
             )),
             child_to_host: ChildToHostWriter::Armed(OutputArbiter::new(
                 shared_stdout,
                 input.clone(),
             )),
             input: Some(input),
+            render_progress: Some(render_progress),
         }
     } else {
         TriggerWiring {
             host_to_child: HostToChildWriter::Passthrough(pty_writer),
             child_to_host: ChildToHostWriter::Passthrough(shared_stdout),
             input: None,
+            render_progress: None,
         }
     }
 }
@@ -263,6 +357,7 @@ where
         host_to_child: pty_writer,
         child_to_host: host_stdout,
         input: _input,
+        render_progress,
     } = wire_trigger_io(armed, pty_writer, host_stdout);
 
     let host_to_child = spawn_cancellable_forwarder(
@@ -276,6 +371,7 @@ where
     Ok(IoPump {
         host_to_child,
         child_to_host,
+        host_to_child_render_progress: render_progress,
     })
 }
 
@@ -420,6 +516,21 @@ mod tests {
             panic!("disarmed child path should remain a passthrough writer");
         };
         assert_eq!(child_bytes.lock().as_slice(), ENTER_ALT);
+    }
+
+    #[test]
+    fn render_progress_budget_uses_frame_overhead_from_zero_base() {
+        let progress = Arc::new(AtomicUsize::new(3));
+
+        let budget = IoPump::host_to_child_post_exit_budget(Some(&progress), Duration::ZERO);
+
+        assert_eq!(
+            budget,
+            FRAME_DELAY
+                .checked_mul(3 * RENDER_FRAME_BUDGET_MULTIPLIER)
+                .expect("small test multiplier should fit")
+                + RENDER_JOIN_SLACK
+        );
     }
 
     #[test]
