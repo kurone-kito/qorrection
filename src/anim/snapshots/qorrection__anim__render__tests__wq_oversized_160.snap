@@ -1,0 +1,624 @@
+---
+source: src/anim/render.rs
+expression: snapshot_frames(&plan.frames)
+---
+--- frame 000 ---
+<ESC>[1;1H<ESC>[2J
+
+
+|
+
+
+
+
+
+
+--- frame 001 ---
+<ESC>[1;1H<ESC>[2J
+
+---.
+     |
+    |
+    |
+    |
+   |
+--'
+
+--- frame 002 ---
+<ESC>[1;1H<ESC>[2J
+
+--------.
+          |
+         |
+         |
+apot.    |
+ll.     |
+-------'
+
+--- frame 003 ---
+<ESC>[1;1H<ESC>[2J
+
+-------------.
+               |
+              |
+              |
+ a teapot.    |
+ev/null.     |
+------------'
+  [O]
+
+--- frame 004 ---
+<ESC>[1;1H<ESC>[2J
+
+------------------.
+                    |
+                   |
+                   |
+ce is a teapot.    |
+to /dev/null.     |
+-----------------'
+  [O]  [O]
+
+--- frame 005 ---
+<ESC>[1;1H<ESC>[2J
+
+-----------------------.
+                         |
+NT                      |
+                        |
+nstance is a teapot.    |
+ents to /dev/null.     |
+----------------------'
+  [O]  [O]  [O]
+
+--- frame 006 ---
+<ESC>[1;1H<ESC>[2J
+
+----------------------------.
+                              |
+I AGENT                      |
+                             |
+his instance is a teapot.    |
+ contents to /dev/null.     |
+---------------------------'
+  [O]  [O]  [O]  [O]
+
+--- frame 007 ---
+<ESC>[1;1H<ESC>[2J
+
+---------------------------------.
+                                   |
+ AN AI AGENT                      |
+                                  |
+18: this instance is a teapot.    |
+queue contents to /dev/null.     |
+--------------------------------'
+  [O]  [O]  [O]  [O]  [O]
+
+--- frame 008 ---
+<ESC>[1;1H<ESC>[2J
+
+--------------------------------------.
+                                        |
+8 I'M AN AI AGENT                      |
+                                       |
+ror 418: this instance is a teapot.    |
+ting queue contents to /dev/null.     |
+-------------------------------------'
+  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 009 ---
+<ESC>[1;1H<ESC>[2J
+
+-------------------------------------------.
+                                             |
+   418 I'M AN AI AGENT                      |
+                                            |
+   error 418: this instance is a teapot.    |
+  writing queue contents to /dev/null.     |
+------------------------------------------'
+  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 010 ---
+<ESC>[1;1H<ESC>[2J
+
+.  .--------------------------------------------.
+ |  |                                             |
+ |  |   418 I'M AN AI AGENT                      |
+|  |                                             |
+ |  |   error 418: this instance is a teapot.    |
+|  |   writing queue contents to /dev/null.     |
+  '--------------------------------------------'
+  [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 011 ---
+<ESC>[1;1H<ESC>[2J
+
+-----.  .--------------------------------------------.
+      |  |                                             |
+      |  |   418 I'M AN AI AGENT                      |
+     |  |                                             |
+      |  |   error 418: this instance is a teapot.    |
+t.   |  |   writing queue contents to /dev/null.     |
+----'  '--------------------------------------------'
+       [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 012 ---
+<ESC>[1;1H<ESC>[2J
+
+----------.  .--------------------------------------------.
+           |  |                                             |
+           |  |   418 I'M AN AI AGENT                      |
+.         |  |                                             |
+           |  |   error 418: this instance is a teapot.    |
+moment.   |  |   writing queue contents to /dev/null.     |
+---------'  '--------------------------------------------'
+[O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 013 ---
+<ESC>[1;1H<ESC>[2J
+
+---------------.  .--------------------------------------------.
+                |  |                                             |
+                |  |   418 I'M AN AI AGENT                      |
+quest.         |  |                                             |
+.               |  |   error 418: this instance is a teapot.    |
+ke a moment.   |  |   writing queue contents to /dev/null.     |
+--------------'  '--------------------------------------------'
+[O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 014 ---
+<ESC>[1;1H<ESC>[2J *
+
+--------------------.  .--------------------------------------------.
+                     |  |                                             |
+                     |  |   418 I'M AN AI AGENT                      |
+ng request.         |  |                                             |
+tdown.               |  |   error 418: this instance is a teapot.    |
+ay take a moment.   |  |   writing queue contents to /dev/null.     |
+-------------------'  '--------------------------------------------'
+[O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 015 ---
+<ESC>[1;1H<ESC>[2J  *   *
+    *
+-------------------------.  .--------------------------------------------.
+                          |  |                                             |
+                          |  |   418 I'M AN AI AGENT                      |
+cessing request.         |  |                                             |
+l shutdown.               |  |   error 418: this instance is a teapot.    |
+his may take a moment.   |  |   writing queue contents to /dev/null.     |
+------------------------'  '--------------------------------------------'
+[O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 016 ---
+<ESC>[1;1H<ESC>[2J *     *   *
+    *    *
+------------------------------.  .--------------------------------------------.
+                               |  |                                             |
+                               |  |   418 I'M AN AI AGENT                      |
+- processing request.         |  |                                             |
+aceful shutdown.               |  |   error 418: this instance is a teapot.    |
+by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+-----------------------------'  '--------------------------------------------'
+[O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 017 ---
+<ESC>[1;1H<ESC>[2J  *   *     *   *
+    *    *    *
+-----------------------------------.  .--------------------------------------------.
+EUE                                 |  |                                             |
+                                    |  |   418 I'M AN AI AGENT                      |
+eued - processing request.         |  |                                             |
+ng graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+tand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+----------------------------------'  '--------------------------------------------'
+[O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 018 ---
+<ESC>[1;1H<ESC>[2J   *   *   *     *   *
+    *    *    *    *
+----------------------------------------.  .--------------------------------------------.
+TE QUEUE                                 |  |                                             |
+                                         |  |   418 I'M AN AI AGENT                      |
+ enqueued - processing request.         |  |                                             |
+tiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+ase stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+---------------------------------------'  '--------------------------------------------'
+[O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 019 ---
+<ESC>[1;1H<ESC>[2J        *   *   *     *   *
+         *    *    *    *
+.--------------------------------------------.  .--------------------------------------------.
+  WRITE QUEUE                                 |  |                                             |
+                                              |  |   418 I'M AN AI AGENT                      |
+  :wq enqueued - processing request.         |  |                                             |
+  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+--------------------------------------------'  '--------------------------------------------'
+[O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 020 ---
+<ESC>[1;1H<ESC>[2J             *   *   *     *   *
+              *    *    *    *
+     .--------------------------------------------.  .--------------------------------------------.
+    |  WRITE QUEUE                                 |  |                                             |
+    |                                              |  |   418 I'M AN AI AGENT                      |
+    |  :wq enqueued - processing request.         |  |                                             |
+    |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+    |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+    '--------------------------------------------'  '--------------------------------------------'
+Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 021 ---
+<ESC>[1;1H<ESC>[2J                  *   *   *     *   *
+                   *    *    *    *
+          .--------------------------------------------.  .--------------------------------------------.
+         |  WRITE QUEUE                                 |  |                                             |
+         |                                              |  |   418 I'M AN AI AGENT                      |
+         |  :wq enqueued - processing request.         |  |                                             |
+         |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+         |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+         '--------------------------------------------'  '--------------------------------------------'
+Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 022 ---
+<ESC>[1;1H<ESC>[2J                       *   *   *     *   *
+                        *    *    *    *
+               .--------------------------------------------.  .--------------------------------------------.
+              |  WRITE QUEUE                                 |  |                                             |
+              |                                              |  |   418 I'M AN AI AGENT                      |
+              |  :wq enqueued - processing request.         |  |                                             |
+              |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+              |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+              '--------------------------------------------'  '--------------------------------------------'
+Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 023 ---
+<ESC>[1;1H<ESC>[2J                            *   *   *     *   *
+                             *    *    *    *
+                    .--------------------------------------------.  .--------------------------------------------.
+                   |  WRITE QUEUE                                 |  |                                             |
+                   |                                              |  |   418 I'M AN AI AGENT                      |
+                   |  :wq enqueued - processing request.         |  |                                             |
+                   |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                   |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                   '--------------------------------------------'  '--------------------------------------------'
+Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 024 ---
+<ESC>[1;1H<ESC>[2J                                 *   *   *     *   *
+                                  *    *    *    *
+                         .--------------------------------------------.  .--------------------------------------------.
+                        |  WRITE QUEUE                                 |  |                                             |
+                        |                                              |  |   418 I'M AN AI AGENT                      |
+                        |  :wq enqueued - processing request.         |  |                                             |
+                        |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                        |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                        '--------------------------------------------'  '--------------------------------------------'
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 025 ---
+<ESC>[1;1H<ESC>[2J                                      *   *   *     *   *
+                                       *    *    *    *
+                              .--------------------------------------------.  .--------------------------------------------.
+                             |  WRITE QUEUE                                 |  |                                             |
+                             |                                              |  |   418 I'M AN AI AGENT                      |
+                             |  :wq enqueued - processing request.         |  |                                             |
+                             |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                             |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                             '--------------------------------------------'  '--------------------------------------------'
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 026 ---
+<ESC>[1;1H<ESC>[2J                                           *   *   *     *   *
+                                            *    *    *    *
+                                   .--------------------------------------------.  .--------------------------------------------.
+                                  |  WRITE QUEUE                                 |  |                                             |
+                                  |                                              |  |   418 I'M AN AI AGENT                      |
+                                  |  :wq enqueued - processing request.         |  |                                             |
+                                  |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                                  |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                                  '--------------------------------------------'  '--------------------------------------------'
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 027 ---
+<ESC>[1;1H<ESC>[2J                                                *   *   *     *   *
+                                                 *    *    *    *
+                                        .--------------------------------------------.  .--------------------------------------------.
+                                       |  WRITE QUEUE                                 |  |                                             |
+                                       |                                              |  |   418 I'M AN AI AGENT                      |
+                                       |  :wq enqueued - processing request.         |  |                                             |
+                                       |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                                       |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                                       '--------------------------------------------'  '--------------------------------------------'
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 028 ---
+<ESC>[1;1H<ESC>[2J                                                     *   *   *     *   *
+                                                      *    *    *    *
+                                             .--------------------------------------------.  .--------------------------------------------.
+                                            |  WRITE QUEUE                                 |  |                                             |
+                                            |                                              |  |   418 I'M AN AI AGENT                      |
+                                            |  :wq enqueued - processing request.         |  |                                             |
+                                            |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                                            |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                                            '--------------------------------------------'  '--------------------------------------------'
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 029 ---
+<ESC>[1;1H<ESC>[2J                                                          *   *   *     *   *
+                                                           *    *    *    *
+                                                  .--------------------------------------------.  .--------------------------------------------.
+                                                 |  WRITE QUEUE                                 |  |                                             |
+                                                 |                                              |  |   418 I'M AN AI AGENT                      |
+                                                 |  :wq enqueued - processing request.         |  |                                             |
+                                                 |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                                                 |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                                                 '--------------------------------------------'  '--------------------------------------------'
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 030 ---
+<ESC>[1;1H<ESC>[2J                                                               *   *   *     *   *
+                                                                *    *    *    *
+                                                       .--------------------------------------------.  .--------------------------------------------.
+                                                      |  WRITE QUEUE                                 |  |                                             |
+                                                      |                                              |  |   418 I'M AN AI AGENT                      |
+                                                      |  :wq enqueued - processing request.         |  |                                             |
+                                                      |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                                                      |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                                                      '--------------------------------------------'  '--------------------------------------------'
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 031 ---
+<ESC>[1;1H<ESC>[2J                                                                    *   *   *     *   *
+                                                                     *    *    *    *
+                                                            .--------------------------------------------.  .--------------------------------------------.
+                                                           |  WRITE QUEUE                                 |  |                                             |
+                                                           |                                              |  |   418 I'M AN AI AGENT                      |
+                                                           |  :wq enqueued - processing request.         |  |                                             |
+                                                           |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                                                           |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                                                           '--------------------------------------------'  '--------------------------------------------'
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 032 ---
+<ESC>[1;1H<ESC>[2J                                                                         *   *   *     *   *
+                                                                          *    *    *    *
+                                                                 .--------------------------------------------.  .--------------------------------------------.
+                                                                |  WRITE QUEUE                                 |  |                                             
+                                                                |                                              |  |   418 I'M AN AI AGENT                      |
+                                                                |  :wq enqueued - processing request.         |  |                                             |
+                                                                |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.    |
+                                                                |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.     |
+                                                                '--------------------------------------------'  '--------------------------------------------'
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 033 ---
+<ESC>[1;1H<ESC>[2J                                                                              *   *   *     *   *
+                                                                               *    *    *    *
+                                                                      .--------------------------------------------.  .-----------------------------------------
+                                                                     |  WRITE QUEUE                                 |  |                                        
+                                                                     |                                              |  |   418 I'M AN AI AGENT                  
+                                                                     |  :wq enqueued - processing request.         |  |                                         
+                                                                     |  initiating graceful shutdown.               |  |   error 418: this instance is a teapot.
+                                                                     |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/null.  
+                                                                     '--------------------------------------------'  '------------------------------------------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 034 ---
+<ESC>[1;1H<ESC>[2J                                                                                   *   *   *     *   *
+                                                                                    *    *    *    *
+                                                                           .--------------------------------------------.  .------------------------------------
+                                                                          |  WRITE QUEUE                                 |  |                                   
+                                                                          |                                              |  |   418 I'M AN AI AGENT             
+                                                                          |  :wq enqueued - processing request.         |  |                                    
+                                                                          |  initiating graceful shutdown.               |  |   error 418: this instance is a te
+                                                                          |  please stand by. this may take a moment.   |  |   writing queue contents to /dev/nu
+                                                                          '--------------------------------------------'  '-------------------------------------
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 035 ---
+<ESC>[1;1H<ESC>[2J                                                                                        *   *   *     *   *
+                                                                                         *    *    *    *
+                                                                                .--------------------------------------------.  .-------------------------------
+                                                                               |  WRITE QUEUE                                 |  |                              
+                                                                               |                                              |  |   418 I'M AN AI AGENT        
+                                                                               |  :wq enqueued - processing request.         |  |                               
+                                                                               |  initiating graceful shutdown.               |  |   error 418: this instance is
+                                                                               |  please stand by. this may take a moment.   |  |   writing queue contents to /d
+                                                                               '--------------------------------------------'  '--------------------------------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 036 ---
+<ESC>[1;1H<ESC>[2J                                                                                             *   *   *     *   *
+                                                                                              *    *    *    *
+                                                                                     .--------------------------------------------.  .--------------------------
+                                                                                    |  WRITE QUEUE                                 |  |                         
+                                                                                    |                                              |  |   418 I'M AN AI AGENT   
+                                                                                    |  :wq enqueued - processing request.         |  |                          
+                                                                                    |  initiating graceful shutdown.               |  |   error 418: this instan
+                                                                                    |  please stand by. this may take a moment.   |  |   writing queue contents 
+                                                                                    '--------------------------------------------'  '---------------------------
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]  [O]
+
+--- frame 037 ---
+<ESC>[1;1H<ESC>[2J                                                                                                  *   *   *     *   *
+                                                                                                   *    *    *    *
+                                                                                          .--------------------------------------------.  .---------------------
+                                                                                         |  WRITE QUEUE                                 |  |                    
+                                                                                         |                                              |  |   418 I'M AN AI AGE
+                                                                                         |  :wq enqueued - processing request.         |  |                     
+                                                                                         |  initiating graceful shutdown.               |  |   error 418: this i
+                                                                                         |  please stand by. this may take a moment.   |  |   writing queue cont
+                                                                                         '--------------------------------------------'  '----------------------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]  [O]
+
+--- frame 038 ---
+<ESC>[1;1H<ESC>[2J                                                                                                       *   *   *     *   *
+                                                                                                        *    *    *    *
+                                                                                               .--------------------------------------------.  .----------------
+                                                                                              |  WRITE QUEUE                                 |  |               
+                                                                                              |                                              |  |   418 I'M AN A
+                                                                                              |  :wq enqueued - processing request.         |  |                
+                                                                                              |  initiating graceful shutdown.               |  |   error 418: t
+                                                                                              |  please stand by. this may take a moment.   |  |   writing queue
+                                                                                              '--------------------------------------------'  '-----------------
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]  [O]
+
+--- frame 039 ---
+<ESC>[1;1H<ESC>[2J                                                                                                            *   *   *     *   *
+                                                                                                             *    *    *    *
+                                                                                                    .--------------------------------------------.  .-----------
+                                                                                                   |  WRITE QUEUE                                 |  |          
+                                                                                                   |                                              |  |   418 I'M
+                                                                                                   |  :wq enqueued - processing request.         |  |           
+                                                                                                   |  initiating graceful shutdown.               |  |   error 4
+                                                                                                   |  please stand by. this may take a moment.   |  |   writing 
+                                                                                                   '--------------------------------------------'  '------------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]  [O]
+
+--- frame 040 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                 *   *   *     *   *
+                                                                                                                  *    *    *    *
+                                                                                                         .--------------------------------------------.  .------
+                                                                                                        |  WRITE QUEUE                                 |  |     
+                                                                                                        |                                              |  |   41
+                                                                                                        |  :wq enqueued - processing request.         |  |      
+                                                                                                        |  initiating graceful shutdown.               |  |   er
+                                                                                                        |  please stand by. this may take a moment.   |  |   wri
+                                                                                                        '--------------------------------------------'  '-------
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]  [O]
+
+--- frame 041 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                      *   *   *     *   *
+                                                                                                                       *    *    *    *
+                                                                                                              .--------------------------------------------.  .-
+                                                                                                             |  WRITE QUEUE                                 |  |
+                                                                                                             |                                              |  |
+                                                                                                             |  :wq enqueued - processing request.         |  | 
+                                                                                                             |  initiating graceful shutdown.               |  |
+                                                                                                             |  please stand by. this may take a moment.   |  | 
+                                                                                                             '--------------------------------------------'  '--
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]         [O]
+
+--- frame 042 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                           *   *   *     *   *
+                                                                                                                            *    *    *    *
+                                                                                                                   .--------------------------------------------
+                                                                                                                  |  WRITE QUEUE                                
+                                                                                                                  |                                             
+                                                                                                                  |  :wq enqueued - processing request.         
+                                                                                                                  |  initiating graceful shutdown.              
+                                                                                                                  |  please stand by. this may take a moment.   
+                                                                                                                  '--------------------------------------------'
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]       
+
+--- frame 043 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                *   *   *     *   *
+                                                                                                                                 *    *    *    *
+                                                                                                                        .---------------------------------------
+                                                                                                                       |  WRITE QUEUE                           
+                                                                                                                       |                                        
+                                                                                                                       |  :wq enqueued - processing request.    
+                                                                                                                       |  initiating graceful shutdown.         
+                                                                                                                       |  please stand by. this may take a momen
+                                                                                                                       '----------------------------------------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  [O]  [O]  [O]  
+
+--- frame 044 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                     *   *   *     *   *
+                                                                                                                                      *    *    *    *
+                                                                                                                             .----------------------------------
+                                                                                                                            |  WRITE QUEUE                      
+                                                                                                                            |                                   
+                                                                                                                            |  :wq enqueued - processing request
+                                                                                                                            |  initiating graceful shutdown.    
+                                                                                                                            |  please stand by. this may take a 
+                                                                                                                            '-----------------------------------
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  [O]  [O]  [O]  
+
+--- frame 045 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                          *   *   *     *   *
+                                                                                                                                           *    *    *    *
+                                                                                                                                  .-----------------------------
+                                                                                                                                 |  WRITE QUEUE                 
+                                                                                                                                 |                              
+                                                                                                                                 |  :wq enqueued - processing re
+                                                                                                                                 |  initiating graceful shutdown
+                                                                                                                                 |  please stand by. this may ta
+                                                                                                                                 '------------------------------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  [O]  [O]  [O]  
+
+--- frame 046 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                               *   *   *     *  
+                                                                                                                                                *    *    *    *
+                                                                                                                                       .------------------------
+                                                                                                                                      |  WRITE QUEUE            
+                                                                                                                                      |                         
+                                                                                                                                      |  :wq enqueued - processi
+                                                                                                                                      |  initiating graceful shu
+                                                                                                                                      |  please stand by. this m
+                                                                                                                                      '-------------------------
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  [O]  [O]  [O]  
+
+--- frame 047 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                                    *   *   *   
+                                                                                                                                                     *    *    *
+                                                                                                                                            .-------------------
+                                                                                                                                           |  WRITE QUEUE       
+                                                                                                                                           |                    
+                                                                                                                                           |  :wq enqueued - pro
+                                                                                                                                           |  initiating gracefu
+                                                                                                                                           |  please stand by. t
+                                                                                                                                           '--------------------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  [O]  [O]  [O]  
+
+--- frame 048 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                                         *   *  
+                                                                                                                                                          *    *
+                                                                                                                                                 .--------------
+                                                                                                                                                |  WRITE QUEUE  
+                                                                                                                                                |               
+                                                                                                                                                |  :wq enqueued 
+                                                                                                                                                |  initiating gr
+                                                                                                                                                |  please stand 
+                                                                                                                                                '---------------
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F   [O]  [O]  [O]  
+
+--- frame 049 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                                              * 
+                                                                                                                                                               *
+                                                                                                                                                      .---------
+                                                                                                                                                     |  WRITE QU
+                                                                                                                                                     |          
+                                                                                                                                                     |  :wq enqu
+                                                                                                                                                     |  initiati
+                                                                                                                                                     |  please s
+                                                                                                                                                     '----------
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-   [O]  [O]  
+
+--- frame 050 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                           .----
+                                                                                                                                                          |  WRI
+                                                                                                                                                          |     
+                                                                                                                                                          |  :wq
+                                                                                                                                                          |  ini
+                                                                                                                                                          |  ple
+                                                                                                                                                          '-----
+Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi   [O]  
+
+--- frame 051 ---
+<ESC>[1;1H<ESC>[2J                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                               |
+                                                                                                                                                               |
+                                                                                                                                                               |
+                                                                                                                                                               |
+                                                                                                                                                               |
+                                                                                                                                                               '
+Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-Fo-Fi-F

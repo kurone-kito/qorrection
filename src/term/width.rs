@@ -6,14 +6,15 @@
 //! Phase C's usage screen and Phase F's animations from
 //! independently inventing thresholds that drift out of sync.
 //!
-//! Boundaries (locked v0.1):
+//! Boundaries:
 //!
-//! | Columns      | Bucket                     |
-//! | ------------ | -------------------------- |
-//! | `< 40`       | [`WidthBucket::Tiny`]      |
-//! | `40..=79`    | [`WidthBucket::Small`]     |
-//! | `80..=119`   | [`WidthBucket::Medium`]    |
-//! | `>= 120`     | [`WidthBucket::Large`]     |
+//! | Columns        | Bucket                        |
+//! | -------------- | ----------------------------- |
+//! | `< 40`         | [`WidthBucket::Tiny`]         |
+//! | `40..=79`      | [`WidthBucket::Small`]        |
+//! | `80..=119`     | [`WidthBucket::Medium`]       |
+//! | `120..=159`    | [`WidthBucket::Large`]        |
+//! | `>= 160`       | [`WidthBucket::Oversized`]    |
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WidthBucket {
@@ -24,9 +25,12 @@ pub enum WidthBucket {
     Small,
     /// `80..=119` columns. Standard car for `:q`.
     Medium,
-    /// `>= 120` columns. Big car (used by `:wq` for the two-line
+    /// `120..=159` columns. Big car (used by `:wq` for the two-line
     /// label) and the widest usage layout.
     Large,
+    /// `>= 160` columns. Oversized cameo track for `:wq` per the
+    /// contract in `docs/anim-large-art-contract.md`.
+    Oversized,
 }
 
 /// Map a raw terminal column count to its bucket.
@@ -38,7 +42,8 @@ pub fn bucket(cols: u16) -> WidthBucket {
         0..=39 => WidthBucket::Tiny,
         40..=79 => WidthBucket::Small,
         80..=119 => WidthBucket::Medium,
-        _ => WidthBucket::Large,
+        120..=159 => WidthBucket::Large,
+        _ => WidthBucket::Oversized,
     }
 }
 
@@ -82,9 +87,19 @@ mod tests {
     }
 
     #[test]
-    fn very_wide_terminal_is_large() {
-        assert_eq!(bucket(500), WidthBucket::Large);
-        assert_eq!(bucket(u16::MAX), WidthBucket::Large);
+    fn boundary_159_is_large() {
+        assert_eq!(bucket(159), WidthBucket::Large);
+    }
+
+    #[test]
+    fn boundary_160_is_oversized() {
+        assert_eq!(bucket(160), WidthBucket::Oversized);
+    }
+
+    #[test]
+    fn very_wide_terminal_is_oversized() {
+        assert_eq!(bucket(500), WidthBucket::Oversized);
+        assert_eq!(bucket(u16::MAX), WidthBucket::Oversized);
     }
 
     #[test]
@@ -94,5 +109,6 @@ mod tests {
         assert!(WidthBucket::Tiny < WidthBucket::Small);
         assert!(WidthBucket::Small < WidthBucket::Medium);
         assert!(WidthBucket::Medium < WidthBucket::Large);
+        assert!(WidthBucket::Large < WidthBucket::Oversized);
     }
 }

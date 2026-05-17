@@ -30,6 +30,7 @@ pub(crate) enum PlanKind {
     TinyBang,
     Q,
     Wq,
+    WqOversized,
     Bang,
 }
 
@@ -84,12 +85,15 @@ where
 ///
 /// Degrade policy is centralized here so boundary tests can pin it:
 ///
-/// - `< 40` columns → one-line trigger-specific fallback gag
-/// - `40..=79`      → tiny ambulance, except `:q!` keeps a tiny parade
-/// - `80..=119`     → standard `:q` scene; `:wq` degrades here because
+/// - `< 40` columns    → one-line trigger-specific fallback gag
+/// - `40..=79`         → tiny ambulance, except `:q!` keeps a tiny parade
+/// - `80..=119`        → standard `:q` scene; `:wq` degrades here because
 ///   the big 418-labeled asset does not fit
-/// - `>= 120`       → `:wq` upgrades to the big labeled scene, `:q!`
+/// - `120..=159`       → `:wq` upgrades to the big labeled scene, `:q!`
 ///   keeps the parade, `:q` stays on the standard car
+/// - `>= 160`          → `:wq` uses the oversized locomotive scene per
+///   `docs/anim-large-art-contract.md`; `:q` and `:q!` stay on their
+///   large-bucket scenes unchanged
 pub(crate) fn render_plan(outcome: Outcome, cols: u16) -> Option<RenderPlan> {
     let b = bucket(cols);
     match outcome {
@@ -100,7 +104,7 @@ pub(crate) fn render_plan(outcome: Outcome, cols: u16) -> Option<RenderPlan> {
                 kind: PlanKind::Tiny,
                 frames: scene::tiny(cols),
             },
-            WidthBucket::Medium | WidthBucket::Large => RenderPlan {
+            WidthBucket::Medium | WidthBucket::Large | WidthBucket::Oversized => RenderPlan {
                 kind: PlanKind::Q,
                 frames: scene::q(cols),
             },
@@ -119,6 +123,10 @@ pub(crate) fn render_plan(outcome: Outcome, cols: u16) -> Option<RenderPlan> {
                 kind: PlanKind::Wq,
                 frames: scene::wq(cols),
             },
+            WidthBucket::Oversized => RenderPlan {
+                kind: PlanKind::WqOversized,
+                frames: scene::wq_oversized(cols),
+            },
         }),
         Outcome::QBang => Some(match b {
             WidthBucket::Tiny => fallback_plan(fallback::Trigger::Bang),
@@ -126,7 +134,7 @@ pub(crate) fn render_plan(outcome: Outcome, cols: u16) -> Option<RenderPlan> {
                 kind: PlanKind::TinyBang,
                 frames: scene::tiny_bang(cols),
             },
-            WidthBucket::Medium | WidthBucket::Large => RenderPlan {
+            WidthBucket::Medium | WidthBucket::Large | WidthBucket::Oversized => RenderPlan {
                 kind: PlanKind::Bang,
                 frames: scene::bang(cols),
             },
@@ -141,18 +149,23 @@ pub(crate) fn render_frame_count(outcome: Outcome, cols: u16) -> Option<usize> {
         Outcome::Q => Some(match b {
             WidthBucket::Tiny => 1,
             WidthBucket::Small => scene::tiny_frame_count(cols),
-            WidthBucket::Medium | WidthBucket::Large => scene::q_frame_count(cols),
+            WidthBucket::Medium | WidthBucket::Large | WidthBucket::Oversized => {
+                scene::q_frame_count(cols)
+            }
         }),
         Outcome::Wq => Some(match b {
             WidthBucket::Tiny => 1,
             WidthBucket::Small => scene::tiny_frame_count(cols),
             WidthBucket::Medium => scene::q_frame_count(cols),
             WidthBucket::Large => scene::wq_frame_count(cols),
+            WidthBucket::Oversized => scene::wq_oversized_frame_count(cols),
         }),
         Outcome::QBang => Some(match b {
             WidthBucket::Tiny => 1,
             WidthBucket::Small => scene::tiny_bang_frame_count(cols),
-            WidthBucket::Medium | WidthBucket::Large => scene::bang_frame_count(cols),
+            WidthBucket::Medium | WidthBucket::Large | WidthBucket::Oversized => {
+                scene::bang_frame_count(cols)
+            }
         }),
     }
 }
@@ -219,14 +232,18 @@ mod tests {
             (Outcome::Q, 40),
             (Outcome::Q, 80),
             (Outcome::Q, 120),
+            (Outcome::Q, 160),
             (Outcome::Wq, 0),
             (Outcome::Wq, 40),
             (Outcome::Wq, 119),
             (Outcome::Wq, 120),
+            (Outcome::Wq, 159),
+            (Outcome::Wq, 160),
             (Outcome::QBang, 12),
             (Outcome::QBang, 40),
             (Outcome::QBang, 80),
             (Outcome::QBang, 120),
+            (Outcome::QBang, 160),
         ] {
             let plan = render_plan(outcome, cols).expect("non-none outcomes must render");
             let count = render_frame_count(outcome, cols).expect("non-none outcomes must count");
@@ -267,10 +284,16 @@ mod tests {
         assert_eq!(render_plan(Outcome::Q, 79).unwrap().kind, PlanKind::Tiny);
         assert_eq!(render_plan(Outcome::Q, 80).unwrap().kind, PlanKind::Q);
         assert_eq!(render_plan(Outcome::Q, 140).unwrap().kind, PlanKind::Q);
+        assert_eq!(render_plan(Outcome::Q, 160).unwrap().kind, PlanKind::Q);
 
         assert_eq!(render_plan(Outcome::Wq, 40).unwrap().kind, PlanKind::Tiny);
         assert_eq!(render_plan(Outcome::Wq, 119).unwrap().kind, PlanKind::Q);
         assert_eq!(render_plan(Outcome::Wq, 120).unwrap().kind, PlanKind::Wq);
+        assert_eq!(render_plan(Outcome::Wq, 159).unwrap().kind, PlanKind::Wq);
+        assert_eq!(
+            render_plan(Outcome::Wq, 160).unwrap().kind,
+            PlanKind::WqOversized
+        );
 
         assert_eq!(
             render_plan(Outcome::QBang, 79).unwrap().kind,
@@ -282,6 +305,10 @@ mod tests {
         );
         assert_eq!(
             render_plan(Outcome::QBang, 140).unwrap().kind,
+            PlanKind::Bang
+        );
+        assert_eq!(
+            render_plan(Outcome::QBang, 160).unwrap().kind,
             PlanKind::Bang
         );
     }
@@ -315,7 +342,19 @@ mod tests {
         assert_render_plan(Outcome::Wq, 80, PlanKind::Q, scene::q(80));
         assert_render_plan(Outcome::Wq, 119, PlanKind::Q, scene::q(119));
         assert_render_plan(Outcome::Wq, 120, PlanKind::Wq, scene::wq(120));
-        assert_render_plan(Outcome::Wq, 140, PlanKind::Wq, scene::wq(140));
+        assert_render_plan(Outcome::Wq, 159, PlanKind::Wq, scene::wq(159));
+        assert_render_plan(
+            Outcome::Wq,
+            160,
+            PlanKind::WqOversized,
+            scene::wq_oversized(160),
+        );
+        assert_render_plan(
+            Outcome::Wq,
+            200,
+            PlanKind::WqOversized,
+            scene::wq_oversized(200),
+        );
     }
 
     #[test]
@@ -365,6 +404,45 @@ mod tests {
             .frames
             .iter()
             .any(|frame| frame.contains("418 I'm an AI agent")));
+    }
+
+    #[test]
+    fn render_plan_oversized_wq_uses_oversized_scene() {
+        let plan = render_plan(Outcome::Wq, 160).unwrap();
+
+        assert_eq!(plan.kind, PlanKind::WqOversized);
+        assert_eq!(plan.frames, scene::wq_oversized(160));
+        assert!(
+            plan.frames.iter().any(|frame| frame.contains("418")),
+            "oversized :wq scene must contain 418 label"
+        );
+        assert!(
+            plan.frames.iter().any(|frame| frame.contains("AI AGENT")),
+            "oversized :wq scene must contain AI AGENT label"
+        );
+    }
+
+    #[test]
+    fn render_plan_oversized_wq_frame_count_is_within_budget() {
+        for cols in [160u16, 200, 300, u16::MAX] {
+            let count = render_frame_count(Outcome::Wq, cols).unwrap();
+            assert!(
+                count <= 60,
+                "oversized :wq at {cols} cols has {count} frames, exceeds 60-frame budget"
+            );
+        }
+    }
+
+    #[test]
+    fn render_plan_large_159_is_still_big_wq_not_oversized() {
+        let plan = render_plan(Outcome::Wq, 159).unwrap();
+        assert_eq!(plan.kind, PlanKind::Wq);
+    }
+
+    #[test]
+    fn snapshot_wq_oversized_160() {
+        let plan = render_plan(Outcome::Wq, 160).unwrap();
+        insta::assert_snapshot!("wq_oversized_160", snapshot_frames(&plan.frames));
     }
 
     #[test]

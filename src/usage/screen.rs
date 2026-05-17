@@ -50,7 +50,7 @@ fn render_for_bucket(b: WidthBucket, cols: u16) -> String {
                 super::layout::render_two_column(&left, &right, 30, 2)
             }
         }
-        WidthBucket::Large => {
+        WidthBucket::Large | WidthBucket::Oversized => {
             let left = car::lines(car::BIG);
             super::layout::render_two_column(&left, &right, 45, 3)
         }
