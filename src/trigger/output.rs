@@ -227,4 +227,31 @@ mod tests {
 
         assert!(!input.lock().unwrap().is_alt_screen());
     }
+
+    #[test]
+    fn write_empty_slice_not_observed() {
+        let input = shared_input_pump();
+        let mut arbiter = OutputArbiter::new(OneByteWriter::default(), input.clone());
+
+        assert_eq!(arbiter.write(b"").unwrap(), 0);
+
+        assert!(arbiter.inner().bytes.is_empty());
+        assert!(!input.lock().unwrap().is_alt_screen());
+    }
+
+    #[test]
+    fn flush_delegates_to_inner() {
+        let input = shared_input_pump();
+        let mut arbiter = OutputArbiter::new(OneByteWriter::default(), input);
+
+        arbiter.flush().unwrap();
+    }
+
+    #[test]
+    fn zero_writer_flush_succeeds() {
+        let input = shared_input_pump();
+        let mut arbiter = OutputArbiter::new(ZeroWriter, input);
+
+        arbiter.flush().unwrap();
+    }
 }

@@ -84,12 +84,56 @@ animation frame. Snapshots are regenerated with
 (`test(snapshots): refresh ambulance frames`). This keeps frame
 edits reviewable without running a real PTY in CI.
 
+## Coverage measurement
+
+### Tool
+
+Install [`cargo-llvm-cov`] once (requires a stable toolchain ≥ 1.87):
+
+```sh
+rustup component add llvm-tools-preview --toolchain stable
+cargo +stable install cargo-llvm-cov
+```
+
+> **Note**: `rust-toolchain.toml` pins the MSRV toolchain (1.78 at
+> time of writing). Run `cargo +stable llvm-cov` to use the stable
+> toolchain instead, bypassing the directory override.
+
+### Running coverage
+
+```sh
+# Summary table for all source files
+cargo +stable llvm-cov --lib
+
+# Summary with missing-line numbers printed at the end
+cargo +stable llvm-cov --lib --show-missing-lines
+
+# Restrict to the trigger module only
+cargo +stable llvm-cov --lib \
+  --ignore-filename-regex='src/(?!trigger)' \
+  --show-missing-lines
+```
+
+### Known remaining gaps (trigger module)
+
+After the tests added in
+[#68](https://github.com/kurone-kito/qorrection/issues/68)
+the trigger module reaches ≈ 98% line coverage. The residual
+uncovered lines are:
+
+| File | Lines | Reason |
+| ---- | ----- | ------ |
+| `trigger/input.rs` | 196 | `tracing::warn!` in `InputDetector::write` error path — requires `observe_detected_input` to return `Err`, which does not happen in the current test harness because the callback always succeeds. |
+| `trigger/input.rs` | 673–675, 705–707 | Inline `on_trigger` closures in tests that intentionally verify the trigger does **not** fire; the closure body is never invoked. Production trigger-fire closure coverage is provided by other tests. |
+
 ## Coverage targets
 
 No hard coverage percentage is enforced — covering every PTY edge
 case is impractical. The intent is:
 
-- Trigger detection: 100% line + branch
+- Trigger detection: ≥ 98% line coverage; 100% line + branch for
+  `parser.rs`, `paste.rs`, and `altscreen.rs`; the residual gap in
+  `input.rs` is documented in the table above
 - Animation rendering: snapshot coverage of every frame
 - PTY plumbing: at least one happy-path E2E test per supported
   platform
@@ -121,5 +165,6 @@ cargo insta review                # review pending snapshots
    limitations they accept.
 
 [`assert_cmd`]: https://crates.io/crates/assert_cmd
+[`cargo-llvm-cov`]: https://crates.io/crates/cargo-llvm-cov
 [`rexpect`]: https://crates.io/crates/rexpect
 [`insta`]: https://crates.io/crates/insta

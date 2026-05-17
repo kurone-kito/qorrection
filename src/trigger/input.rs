@@ -872,4 +872,70 @@ mod tests {
             InputObservation::Bypassed(BypassReason::AltScreen)
         );
     }
+
+    #[test]
+    fn input_interceptor_debug_format_contains_struct_name() {
+        let input = shared_input_pump();
+        let interceptor = InputInterceptor::new(Vec::<u8>::new(), input, |_| Ok(()));
+        let s = format!("{interceptor:?}");
+        assert!(s.contains("InputInterceptor"), "Debug output: {s}");
+    }
+
+    #[test]
+    fn input_detector_flush_succeeds() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(Vec::<u8>::new(), input);
+        detector.flush().unwrap();
+    }
+
+    #[test]
+    fn input_interceptor_flush_succeeds() {
+        let input = shared_input_pump();
+        let mut interceptor = InputInterceptor::new(OneByteWriter::default(), input, |_| Ok(()));
+        interceptor.flush().unwrap();
+    }
+
+    #[test]
+    fn input_interceptor_forwards_bare_newline() {
+        let input = shared_input_pump();
+        let mut interceptor = InputInterceptor::new(Vec::<u8>::new(), input, |_| Ok(()));
+        interceptor.write_all(b"\n").unwrap();
+        assert_eq!(interceptor.inner().as_slice(), b"\n");
+    }
+
+    #[test]
+    fn input_interceptor_suppress_lf_cleared_by_non_newline() {
+        let input = shared_input_pump();
+        let fired = Arc::new(Mutex::new(Vec::new()));
+        let fired_probe = Arc::clone(&fired);
+        let mut interceptor = InputInterceptor::new(Vec::<u8>::new(), input, move |outcome| {
+            fired_probe.lock().unwrap().push(outcome);
+            Ok(())
+        });
+        interceptor.write_all(b":wq\r:").unwrap();
+        assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Wq]);
+        assert_eq!(interceptor.inner().as_slice(), b"");
+    }
+
+    #[test]
+    fn input_detector_write_empty_buf_skips_observation() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(OneByteWriter::default(), input);
+        assert_eq!(detector.write(b"").unwrap(), 0);
+        assert!(detector.inner().bytes.is_empty());
+    }
+
+    #[test]
+    fn broken_pipe_after_one_write_empty_returns_zero() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(BrokenPipeAfterOne::default(), input);
+        assert_eq!(detector.write(b"").unwrap(), 0);
+    }
+
+    #[test]
+    fn broken_pipe_after_one_flush_succeeds() {
+        let input = shared_input_pump();
+        let mut detector = InputDetector::new(BrokenPipeAfterOne::default(), input);
+        detector.flush().unwrap();
+    }
 }
