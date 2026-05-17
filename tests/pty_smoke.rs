@@ -22,8 +22,12 @@
 //! master handle is open — the ConPTY session object keeps the process
 //! wait from completing. The fix is to close the full `PtyMaster` (which
 //! calls `ClosePseudoConsole`) *before* polling `try_wait`. A brief sleep
-//! before closing gives `cmd.exe` time to flush "hi" into the ConPTY
-//! buffer so the output is captured before the session tears down.
+//! before closing gives `cmd.exe` time to flush its output into the ConPTY
+//! buffer before the session tears down.
+//!
+//! `ClosePseudoConsole` is called from a short-lived teardown thread so
+//! that a stuck close (possible on some ConPTY builds or CI environments)
+//! triggers a bounded panic instead of hanging the test runner indefinitely.
 //!
 //! Closing just the writer half of the master would instead signal
 //! `STATUS_CONTROL_C_EXIT`; we drop the full master as a unit to stay
@@ -118,12 +122,28 @@ fn portable_pty_echoes_hi() {
     // cmd.exe with ConPTY performs extensive terminal initialisation
     // (escape sequences, window-title, cursor management) before running
     // the user command. 3 s is a conservative budget that covers even
-    // slow CI runners; the captured output includes both init sequences
-    // and the actual "hi" from `echo hi`.
+    // slow CI runners.
+    //
+    // ClosePseudoConsole is called from a dedicated thread so a stuck
+    // close fails fast via a channel timeout rather than hanging forever.
     #[cfg(windows)]
     {
         thread::sleep(Duration::from_millis(3000));
-        drop(master.take());
+
+        let teardown_master = master.take();
+        let (teardown_tx, teardown_rx) = mpsc::channel::<()>();
+        thread::spawn(move || {
+            drop(teardown_master); // calls ClosePseudoConsole
+            let _ = teardown_tx.send(());
+        });
+        const CLOSE_BUDGET: Duration = Duration::from_secs(5);
+        if teardown_rx.recv_timeout(CLOSE_BUDGET).is_err() {
+            let _ = killer.kill();
+            panic!(
+                "ClosePseudoConsole did not complete within {CLOSE_BUDGET:?}; \
+                 ConPTY teardown hung"
+            );
+        }
     }
 
     // Bounded wait for the child. On Unix the reader thread is still
