@@ -502,13 +502,11 @@ extern "C" fn handler(sig: libc::c_int) {
 }
 
 #[cfg(test)]
+pub(crate) static TEST_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    // Singleton install means tests cannot run in parallel.
-    // One mutex serializes any test that touches the guard.
-    static SERIAL: Mutex<()> = Mutex::new(());
 
     /// Test-only injection point: when set to a non-zero signal
     /// number, the next `install_handler` call for that signal
@@ -531,7 +529,7 @@ mod tests {
 
     #[test]
     fn install_and_drain_winch() {
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         let guard = SignalGuard::install().expect("install");
         // SAFETY: kill on our own pid with SIGWINCH (default
         // action: ignore) is safe even without a handler.
@@ -558,7 +556,7 @@ mod tests {
         // handler install or decode regression for SIGTERM would
         // otherwise slip past the SIGWINCH-only delivery test
         // and the install-failure injection tests.
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         let guard = SignalGuard::install().expect("install");
         // SAFETY: SIGTERM's default action is to terminate, but
         // our handler is installed by `install()` above and
@@ -582,7 +580,7 @@ mod tests {
 
     #[test]
     fn resize_only_install_skips_sigterm_handler_setup() {
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         FAIL_INSTALL_FOR.store(libc::SIGTERM, Ordering::Release);
         let guard = SignalGuard::install_resize_only();
         FAIL_INSTALL_FOR.store(0, Ordering::Release);
@@ -604,7 +602,7 @@ mod tests {
 
     #[test]
     fn double_install_is_rejected() {
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         let _g = SignalGuard::install().expect("first install");
         let err = SignalGuard::install().expect_err("second install must fail");
         assert!(err.to_string().contains("already installed"), "{err}");
@@ -612,7 +610,7 @@ mod tests {
 
     #[test]
     fn drop_restores_previous_handler() {
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         // Install + drop, then verify SIGWINCH no longer writes
         // to a (now-closed) pipe by re-installing and confirming
         // it succeeds -- a stale handler would be using the old
@@ -632,7 +630,7 @@ mod tests {
         // install opens the pipe and caches both ends; every
         // subsequent install in this process must reuse those
         // exact descriptors.
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         let (first_r, first_w) = {
             let g = SignalGuard::install().expect("first install");
             (g.read_fd, g.write_fd)
@@ -653,7 +651,7 @@ mod tests {
         // leftovers; otherwise the new session's first `drain`
         // would surface a Resize/Shutdown that no longer maps
         // to anything in this lifetime.
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         let cached_w = {
             let g = SignalGuard::install().expect("first install");
             g.write_fd
@@ -691,7 +689,7 @@ mod tests {
         // *new* pipe (or reuse a pre-existing valid cached one)
         // rather than handing the OS-recycled FD numbers to the
         // I/O loop.
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         // Drain any cache populated by an earlier test.
         CACHED_READ_FD.store(-1, Ordering::Release);
         CACHED_WRITE_FD.store(-1, Ordering::Release);
@@ -724,7 +722,7 @@ mod tests {
         // succeeded, the pipe must stay open (in-flight handler
         // safety) AND must be cached, so the next install
         // reuses that exact pair instead of leaking another.
-        let _serial = SERIAL.lock().unwrap();
+        let _serial = TEST_SERIAL.lock().unwrap();
         CACHED_READ_FD.store(-1, Ordering::Release);
         CACHED_WRITE_FD.store(-1, Ordering::Release);
 

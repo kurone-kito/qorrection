@@ -196,8 +196,8 @@ impl ShutdownTarget {
 #[cfg(unix)]
 pub(crate) struct DeferredShutdown<C> {
     child: C,
-    _master: Box<dyn MasterPty + Send>,
-    shutdown_target: Option<ShutdownTarget>,
+    master: Box<dyn MasterPty + Send>,
+    signal_guard: Option<SignalGuard>,
     host_to_child: Option<ForwarderHandle>,
     child_to_host: Option<ForwarderHandle>,
     host_to_child_render_progress: Option<SharedRenderProgress>,
@@ -211,9 +211,29 @@ impl<C> DeferredShutdown<C>
 where
     C: SupervisedChild,
 {
+    fn resolve_shutdown_target(&self) -> Option<ShutdownTarget> {
+        ShutdownTarget::from_parts(self.master.process_group_leader(), self.child.process_id())
+    }
+
     pub(crate) fn complete(mut self) -> Result<ExitCode> {
         let mut guard = KillOnDropGuard::armed(self.child.clone_killer());
-        let target = self.shutdown_target.ok_or_else(|| {
+        if let Some(status) = self
+            .child
+            .try_wait()
+            .map_err(|e| wrap_io("child try_wait before forwarded SIGTERM", e))?
+        {
+            guard.disarm();
+            return finish_after_child_exit(
+                status,
+                self.host_to_child.take(),
+                self.child_to_host.take(),
+                self.host_to_child_render_progress.take(),
+                self.h2c_result.take(),
+                self.c2h_result.take(),
+                self.deadlines,
+            );
+        }
+        let target = self.resolve_shutdown_target().ok_or_else(|| {
             wrap_io(
                 "forward SIGTERM to PTY child",
                 io::Error::new(
@@ -396,14 +416,20 @@ where
     // after the supervisor returns.
     let signal_guard = setup()?;
     kill_guard.disarm();
-    run_pump_session_with_signals(
+    match run_pump_session_with_signals(
         child,
         master,
         &signal_guard,
         size::current_size,
         pump,
         Deadlines::production(),
-    )
+    )? {
+        SessionStatus::Exited(code) => Ok(SessionStatus::Exited(code)),
+        SessionStatus::DeferredShutdown(mut shutdown) => {
+            shutdown.signal_guard = Some(signal_guard);
+            Ok(SessionStatus::DeferredShutdown(shutdown))
+        }
+    }
 }
 
 /// Lifecycle core, parameterised over the [`SupervisedChild`]
@@ -439,8 +465,6 @@ where
     S: SignalSource + ?Sized,
     Q: FnMut() -> Option<PtySize>,
 {
-    let shutdown_target =
-        ShutdownTarget::from_parts(master.process_group_leader(), child.process_id());
     match run_pump_session_inner(child, pump, deadlines, || {
         handle_signal_events(signals, master.as_ref(), &mut query_size)
     })? {
@@ -448,8 +472,8 @@ where
         SupervisorOutcome::Shutdown(pending) => Ok(SessionStatus::DeferredShutdown(Box::new(
             DeferredShutdown {
                 child: pending.child,
-                _master: master,
-                shutdown_target,
+                master,
+                signal_guard: None,
                 host_to_child: pending.host_to_child,
                 child_to_host: pending.child_to_host,
                 host_to_child_render_progress: pending.host_to_child_render_progress,
@@ -691,10 +715,20 @@ fn wait_with_budget<C: SupervisedChild>(
 #[cfg(unix)]
 fn signal_shutdown_target(target: ShutdownTarget) -> io::Result<()> {
     let rc = match target {
-        ShutdownTarget::ProcessGroup(process_group_leader) => unsafe {
-            libc::killpg(process_group_leader, libc::SIGTERM)
-        },
-        ShutdownTarget::Process(process_id) => unsafe { libc::kill(process_id, libc::SIGTERM) },
+        ShutdownTarget::ProcessGroup(process_group_leader) => {
+            // SAFETY: `ShutdownTarget::from_parts()` constructs this variant only
+            // from positive `pid_t` values, so the group leader id is well-formed
+            // for libc. Sending SIGTERM is intentional, and errno handling is
+            // preserved below.
+            unsafe { libc::killpg(process_group_leader, libc::SIGTERM) }
+        }
+        ShutdownTarget::Process(process_id) => {
+            // SAFETY: `ShutdownTarget::from_parts()` constructs this variant only
+            // from positive `pid_t` values converted from the child pid, so the
+            // process id is well-formed for libc. Sending SIGTERM is intentional,
+            // and errno handling is preserved below.
+            unsafe { libc::kill(process_id, libc::SIGTERM) }
+        }
     };
     if rc == 0 {
         return Ok(());
@@ -730,13 +764,10 @@ fn finish_after_child_exit(
         } else {
             Duration::ZERO
         };
-        #[cfg(unix)]
         let budget = IoPump::host_to_child_post_exit_budget(
             host_to_child_render_progress.as_ref(),
             base_budget,
         );
-        #[cfg(not(unix))]
-        let budget = base_budget;
         h2c_result = Some(join_with_budget(h, budget));
     }
     if let Some(h) = child_to_host.take() {
@@ -837,7 +868,11 @@ mod tests {
     use crate::pty::forward::{
         spawn_cancellable_forwarder, spawn_forwarder, CancelHandle, CancellableReader, Direction,
     };
+    #[cfg(unix)]
+    use crate::signals::TEST_SERIAL;
     use std::io::{self, Cursor};
+    #[cfg(unix)]
+    use std::sync::atomic::AtomicI32;
     use std::sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -1588,7 +1623,7 @@ mod tests {
     struct MockMasterState {
         calls: Mutex<Vec<PtySize>>,
         fail: bool,
-        process_group_leader: Option<libc::pid_t>,
+        process_group_leader: AtomicI32,
     }
 
     #[cfg(unix)]
@@ -1605,7 +1640,7 @@ mod tests {
             let state = Arc::new(MockMasterState {
                 calls: Mutex::new(Vec::new()),
                 fail,
-                process_group_leader,
+                process_group_leader: AtomicI32::new(process_group_leader.unwrap_or_default()),
             });
             (
                 Self {
@@ -1613,6 +1648,15 @@ mod tests {
                 },
                 state,
             )
+        }
+
+        fn set_process_group_leader(
+            state: &MockMasterState,
+            process_group_leader: Option<libc::pid_t>,
+        ) {
+            state
+                .process_group_leader
+                .store(process_group_leader.unwrap_or_default(), Ordering::SeqCst);
         }
     }
 
@@ -1639,7 +1683,8 @@ mod tests {
         }
 
         fn process_group_leader(&self) -> Option<libc::pid_t> {
-            self.state.process_group_leader
+            let pid = self.state.process_group_leader.load(Ordering::SeqCst);
+            (pid > 0).then_some(pid)
         }
 
         fn as_raw_fd(&self) -> Option<std::os::fd::RawFd> {
@@ -1811,14 +1856,108 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn deferred_shutdown_rechecks_child_exit_before_forwarding_sigterm() {
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 0);
+        let handle = child.handle();
+
+        let code = DeferredShutdown {
+            child,
+            master: Box::new(DummyMaster),
+            signal_guard: None,
+            host_to_child: None,
+            child_to_host: None,
+            host_to_child_render_progress: None,
+            h2c_result: None,
+            c2h_result: None,
+            deadlines: fast_deadlines(),
+        }
+        .complete()
+        .expect("already-exited child should bypass SIGTERM forwarding");
+
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+        assert_eq!(
+            handle.lock().unwrap().kills,
+            0,
+            "already-exited child should not be killed during deferred completion"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deferred_shutdown_resolves_shutdown_target_from_live_master_state() {
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 1_000_000);
+        let (master, state) = MockMaster::shared(false, Some(7));
+        let shutdown = DeferredShutdown {
+            child,
+            master: Box::new(master),
+            signal_guard: None,
+            host_to_child: None,
+            child_to_host: None,
+            host_to_child_render_progress: None,
+            h2c_result: None,
+            c2h_result: None,
+            deadlines: fast_deadlines(),
+        };
+
+        assert!(matches!(
+            shutdown.resolve_shutdown_target(),
+            Some(ShutdownTarget::ProcessGroup(7))
+        ));
+        MockMaster::set_process_group_leader(state.as_ref(), Some(54_054));
+        assert!(matches!(
+            shutdown.resolve_shutdown_target(),
+            Some(ShutdownTarget::ProcessGroup(54_054))
+        ));
+        MockMaster::set_process_group_leader(state.as_ref(), None);
+        assert!(matches!(
+            shutdown.resolve_shutdown_target(),
+            Some(ShutdownTarget::Process(42_042))
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deferred_shutdown_keeps_signal_guard_installed_until_completion() {
+        let _serial = TEST_SERIAL.lock().unwrap();
+        let child = MockChild::new(ExitStatus::with_exit_code(0), 0);
+        let guard = SignalGuard::install().expect("install signal guard");
+        let shutdown = DeferredShutdown {
+            child,
+            master: Box::new(DummyMaster),
+            signal_guard: Some(guard),
+            host_to_child: None,
+            child_to_host: None,
+            host_to_child_render_progress: None,
+            h2c_result: None,
+            c2h_result: None,
+            deadlines: fast_deadlines(),
+        };
+
+        let err = SignalGuard::install().expect_err("deferred shutdown should retain the guard");
+        assert!(
+            matches!(&err, Error::Terminal(io_err) if io_err.kind() == io::ErrorKind::AlreadyExists),
+            "expected Terminal(AlreadyExists), got {err:?}"
+        );
+
+        let code = shutdown
+            .complete()
+            .expect("already-exited child should release the retained signal guard cleanly");
+        assert_eq!(format!("{code:?}"), format!("{:?}", ExitCode::SUCCESS));
+
+        let guard = SignalGuard::install().expect("signal guard should drop after completion");
+        drop(guard);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn deferred_shutdown_kills_child_on_completion_error() {
         let child = MockChild::new(ExitStatus::with_exit_code(0), 1_000_000);
         let handle = child.handle();
 
         let err = DeferredShutdown {
             child,
-            _master: Box::new(DummyMaster),
-            shutdown_target: None,
+            master: Box::new(DummyMaster),
+            signal_guard: None,
             host_to_child: None,
             child_to_host: None,
             host_to_child_render_progress: None,
