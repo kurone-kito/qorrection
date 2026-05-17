@@ -25,6 +25,9 @@ mod unix {
     const BANG_CARS: usize = 9;
     const PARADE_MIN_VISIBLE_LABELS: usize = 3;
     const LONG_ANIMATION_COLS: u16 = 120;
+    const SIGWINCH_HOST_COLS: u16 = 120;
+    const SIGWINCH_CHILD_COLS: u16 = 80;
+    const SIGWINCH_CHILD_ROWS: u16 = 20;
     const PTY_ROWS: u16 = 24;
 
     fn q9() -> Command {
@@ -433,6 +436,47 @@ mod unix {
             "expected wrapper SIGTERM path to surface SIGTERM diagnostic, got {remaining:?}"
         );
         Ok(())
+    }
+
+    /// Issue #61 E2E coverage: when the wrapper receives
+    /// SIGWINCH, it must resize the child PTY back to the outer
+    /// host width and forward the signal so the child trap can
+    /// observe the restored terminal size.
+    #[test]
+    fn q9_wrapper_sigwinch_resizes_child_and_forwards_winch(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = q9_with_tty_size(SIGWINCH_HOST_COLS, PTY_ROWS);
+        let script = format!(
+            "stty cols {SIGWINCH_CHILD_COLS} rows {SIGWINCH_CHILD_ROWS}\n\
+             trap 'printf \"WINCH:%s:%s\\\\n\" \"$(tput cols)\" \"$(tput lines)\"; exit 0' WINCH\n\
+             printf 'READY:%s:%s\\\\n' \"$(tput cols)\" \"$(tput lines)\"\n\
+             while IFS= read -r line; do\n\
+               case \"$line\" in\n\
+                 print) printf 'NOW:%s:%s\\\\n' \"$(tput cols)\" \"$(tput lines)\" ;;\n\
+               esac\n\
+             done\n"
+        );
+        command.env("TERM", "xterm").arg("sh").arg("-c").arg(script);
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        let ready_marker = format!("READY:{SIGWINCH_CHILD_COLS}:{SIGWINCH_CHILD_ROWS}");
+        session.exp_string(&ready_marker)?;
+
+        session.send_line("print")?;
+        let before_signal = format!("NOW:{SIGWINCH_CHILD_COLS}:{SIGWINCH_CHILD_ROWS}");
+        session.exp_string(&before_signal)?;
+
+        session.process.signal(Signal::SIGWINCH)?;
+        let forwarded = format!("WINCH:{SIGWINCH_HOST_COLS}:{PTY_ROWS}");
+        session.exp_string(&forwarded)?;
+
+        let _remaining = session.exp_eof()?;
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => Ok(()),
+            other => {
+                panic!("expected q9 to exit 0 after forwarded SIGWINCH coverage, got {other:?}")
+            }
+        }
     }
 }
 
