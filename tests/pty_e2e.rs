@@ -62,6 +62,10 @@ mod unix {
             .unwrap_or(0)
     }
 
+    fn queue_run_regex(labels: usize) -> String {
+        format!("QUEUE(?:[^\\n]*QUEUE){{{}}}", labels.saturating_sub(1))
+    }
+
     #[test]
     fn q9_cat_passthrough_echoes_input_and_exits_zero() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = q9();
@@ -230,11 +234,23 @@ mod unix {
         session.send_line(":q!")?;
 
         let _before_animation = session.exp_string("\u{1b}[?1049h")?;
-        let animation = session.exp_string("\u{1b}[?1049l")?;
+        // The full-width nine-car parade takes longer than a single
+        // rexpect polling window on hosted macOS, so break the read at
+        // the first fully visible convoy row and then wait only for the
+        // remaining tail back to the primary screen.
+        let (before_full_convoy, full_convoy_row) =
+            session.exp_regex(&queue_run_regex(BANG_CARS))?;
+        let after_full_convoy = session.exp_string("\u{1b}[?1049l")?;
+        let animation = format!("{before_full_convoy}{full_convoy_row}{after_full_convoy}");
         let normalized_animation = animation.replace("\r\n", "\n");
         assert!(
             normalized_animation.contains("\u{1b}[2J"),
             "expected animation to draw at least one frame, got {normalized_animation:?}"
+        );
+        assert_eq!(
+            full_convoy_row.matches("QUEUE").count(),
+            BANG_CARS,
+            "expected a fully visible nine-car convoy row, got {full_convoy_row:?}"
         );
         let max_queue_labels = max_frame_occurrences(&normalized_animation, "QUEUE");
         // Pure scene tests already pin the exact nine-label
