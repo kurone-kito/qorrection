@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Oversized cameo track** for `:wq` on wide terminals (≥ 160 columns).
+  Inspired by `sl`/`nyancat` in scale while keeping repo-owned, pure-ASCII,
+  embedded art.
+  - Scene contract in `docs/anim-large-art-contract.md` defines eligibility
+    (≥ 160 cols), trigger mapping (`:wq` only), frame budget (≤ 60 frames), and
+    clipping policy (no horizontal or vertical clipping allowed).
+  - Original oversized ASCII locomotive asset: `src/anim/assets/oversized.txt`
+    (10 rows × 99 cols, exposed as `car::OVERSIZED`).
+  - `WidthBucket::Oversized` width bucket for ≥ 160-column terminals.
+  - `:wq` at ≥ 160 cols renders the oversized locomotive sweep (≤ 60 frames at
+    50 ms each); `:q` and `:q!` keep their existing large-bucket scenes.
+
 ## [0.1.0] - 2026-05-17
 
 ### Added
