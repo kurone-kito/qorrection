@@ -44,6 +44,7 @@ words:
   # partial frame text can include these truncated word tails.
   - agen
   - aichat
+  - asciinema
   - clau
   - claudex
   - clauder

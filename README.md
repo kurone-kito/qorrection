@@ -24,6 +24,13 @@ animation, and signal handling are fully implemented and
 cross-platform tested (Linux, macOS, Windows ConPTY). See
 [the roadmap](#roadmap) for what's in scope and what comes next.
 
+## Demo
+
+<!-- Replace with an animated GIF or asciinema embed once recorded.
+     Suggested recording: `q9 claude` session → type `:q` → ambulance sweeps. -->
+
+*Screencast coming soon.*
+
 ## Why
 
 Modern AI coding agents (GitHub Copilot CLI, Claude Code, Codex
