@@ -18,13 +18,16 @@
 //!
 //! ## Windows
 //!
-//! The test is `#[ignore]` on Windows: ConPTY's stdin-closure
-//! and reaping semantics conflict at the smoke level (closing
-//! the master writer triggers `STATUS_CONTROL_C_EXIT` on
-//! `cmd /C echo hi`, while keeping it open prevents `try_wait`
-//! from observing exit). The real wrapper handles this with an
-//! explicit termination protocol in Phase 1+. Tracking issue:
-//! <https://github.com/kurone-kito/qorrection/issues/84>.
+//! On Windows ConPTY, `try_wait` does not observe process exit while the
+//! master handle is open — the ConPTY session object keeps the process
+//! wait from completing. The fix is to close the full `PtyMaster` (which
+//! calls `ClosePseudoConsole`) *before* polling `try_wait`. A brief sleep
+//! before closing gives `cmd.exe` time to flush "hi" into the ConPTY
+//! buffer so the output is captured before the session tears down.
+//!
+//! Closing just the writer half of the master would instead signal
+//! `STATUS_CONTROL_C_EXIT`; we drop the full master as a unit to stay
+//! on the clean `ClosePseudoConsole` path.
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::Read;
@@ -79,17 +82,12 @@ fn portable_pty_echoes_hi() {
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().expect("clone master reader");
-    // NOTE: do NOT pull the writer out of the master and drop
-    // it on Windows. Closing just the writer half of a ConPTY
-    // master can be observed by the child as a Ctrl-C / break
-    // and surface as `STATUS_CONTROL_C_EXIT` (0xC000013A) —
-    // `cmd /C echo hi` then exits non-zero before its output is
-    // even written. We instead hold the entire master alive
-    // (writer + reader halves together) until after the bounded
-    // child wait completes, then drop it as a unit so the
-    // reader receives EOF (the ConPTY only signals EOF on the
-    // read side once the master is fully closed). Unix is
-    // tolerant either way.
+    // Do NOT split the master by calling `take_writer()` and then
+    // dropping just the writer half. On Windows ConPTY that closes
+    // the stdin pipe, which the child observes as Ctrl-C / break
+    // (`STATUS_CONTROL_C_EXIT`, 0xC000013A). We always drop the
+    // full `PtyMaster` as a unit so Windows takes the clean
+    // `ClosePseudoConsole` path. Unix is tolerant either way.
     let mut master = Some(pair.master);
 
     // Drain the master in a worker thread. Blocking `read` is
@@ -113,9 +111,21 @@ fn portable_pty_echoes_hi() {
         let _ = tx.send(Ok(captured));
     });
 
-    // Bounded wait for the child first. The reader thread is
-    // still draining whatever the child wrote into the PTY; we
-    // close the master afterwards to make the reader see EOF.
+    // On Windows ConPTY, `try_wait` does not report process exit while
+    // the master handle is open. Close the full master first so the
+    // OS process-handle wait can proceed. Sleep briefly beforehand to
+    // let `cmd.exe` flush its output into the ConPTY buffer before the
+    // session is torn down.
+    #[cfg(windows)]
+    {
+        thread::sleep(Duration::from_millis(500));
+        drop(master.take());
+    }
+
+    // Bounded wait for the child. On Unix the reader thread is still
+    // draining; we close the master afterwards to make it see EOF.
+    // On Windows the master is already closed (above) and try_wait can
+    // now observe the process exit.
     let wait_deadline = Instant::now() + WAIT_BUDGET;
     let status = loop {
         match child.try_wait() {
@@ -139,8 +149,8 @@ fn portable_pty_echoes_hi() {
         }
     };
 
-    // Child has exited; closing the master signals EOF to the
-    // reader on Windows (Unix is tolerant either way).
+    // Child has exited; close the master so the reader sees EOF.
+    // On Windows the master was already closed before the wait loop.
     drop(master.take());
 
     let captured = match rx.recv_timeout(READ_BUDGET) {
