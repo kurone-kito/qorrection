@@ -21,6 +21,8 @@ mod unix {
     // assertion into a timeout race.
     const TIMEOUT_MS: u64 = 30_000;
     const LARGE_WQ_COLS: u16 = 120;
+    const BANG_CARS: usize = 9;
+    const PARADE_MIN_VISIBLE_LABELS: usize = 3;
     const PTY_ROWS: u16 = 24;
 
     fn q9() -> Command {
@@ -42,6 +44,26 @@ mod unix {
         command.arg("-c").arg(script).arg(env!("CARGO_BIN_EXE_q9"));
         command.env_remove("QORRECTION_LOG");
         command
+    }
+
+    fn bang_cols() -> u16 {
+        u16::try_from(qorrection::anim::car::max_width(qorrection::anim::car::STD) * BANG_CARS)
+            .expect("nine-car convoy width must fit in u16")
+    }
+
+    fn max_frame_occurrences(animation: &str, needle: &str) -> usize {
+        // `draw_frame` clears the screen before every frame, so
+        // each `\u{1b}[2J` split chunk corresponds to one convoy
+        // snapshot plus any surrounding cursor/home control bytes.
+        animation
+            .split("\u{1b}[2J")
+            .map(|frame| frame.matches(needle).count())
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn queue_run_regex(labels: usize) -> String {
+        format!("QUEUE(?:[^\\n]*QUEUE){{{}}}", labels.saturating_sub(1))
     }
 
     #[test]
@@ -195,6 +217,76 @@ mod unix {
         Ok(())
     }
 
+    /// Issue #55 E2E coverage: when an allowlisted child is
+    /// armed, typing `:q!` on a wide PTY must render a convoy
+    /// frame with all nine `QUEUE` labels while still keeping
+    /// the trigger out of child stdin.
+    #[test]
+    fn q9_armed_helper_q_bang_shows_nine_car_parade() -> Result<(), Box<dyn std::error::Error>> {
+        let helper = support::ArmedHelper::echo_stdin();
+        // Use the full convoy width so every hosted runner gets at
+        // least one frame where all nine labels are simultaneously
+        // visible instead of clipped at the viewport edge.
+        let mut command = q9_with_tty_size(bang_cols(), PTY_ROWS);
+        command.env("PATH", helper.path()).arg(helper.command());
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        session.send_line(":q!")?;
+
+        let _before_animation = session.exp_string("\u{1b}[?1049h")?;
+        // The full-width nine-car parade takes longer than a single
+        // rexpect polling window on hosted macOS, so break the read at
+        // the first fully visible convoy row and then wait only for the
+        // remaining tail back to the primary screen.
+        let (before_full_convoy, full_convoy_row) =
+            session.exp_regex(&queue_run_regex(BANG_CARS))?;
+        let after_full_convoy = session.exp_string("\u{1b}[?1049l")?;
+        let animation = format!("{before_full_convoy}{full_convoy_row}{after_full_convoy}");
+        let normalized_animation = animation.replace("\r\n", "\n");
+        assert!(
+            normalized_animation.contains("\u{1b}[2J"),
+            "expected animation to draw at least one frame, got {normalized_animation:?}"
+        );
+        assert_eq!(
+            full_convoy_row.matches("QUEUE").count(),
+            BANG_CARS,
+            "expected a fully visible nine-car convoy row, got {full_convoy_row:?}"
+        );
+        let max_queue_labels = max_frame_occurrences(&normalized_animation, "QUEUE");
+        // Pure scene tests already pin the exact nine-label
+        // geometry; this PTY E2E only needs enough repeated
+        // labels to prove q9 fired the `:q!` convoy end-to-end
+        // on a real host terminal without forwarding the trigger.
+        assert!(
+            max_queue_labels >= PARADE_MIN_VISIBLE_LABELS,
+            "expected q9 to render a multi-car :q! convoy; best frame showed {max_queue_labels} labels in {normalized_animation:?}"
+        );
+        assert!(
+            !normalized_animation.contains("418 I'm an AI agent"),
+            "expected the :q! parade to avoid the :wq 418 banner, got {normalized_animation:?}"
+        );
+
+        session.send_line("still-here")?;
+        session.exp_string("still-here")?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => panic!("expected armed helper to exit 0 after follow-up input, got {other:?}"),
+        }
+
+        let normalized_remaining = remaining.replace("\r\n", "\n");
+        assert!(
+            normalized_remaining.contains("still-here"),
+            "expected helper stdout to echo the follow-up line after animation, got {normalized_remaining:?}"
+        );
+        assert!(
+            !normalized_remaining.contains(":q!"),
+            "expected swallowed trigger to stay out of helper output, got {normalized_remaining:?}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn q9_cat_typed_ctrl_c_reaches_child_and_exits_130() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = q9();
@@ -300,6 +392,14 @@ mod windows {
     #[test]
     #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
     fn q9_armed_helper_wq_shows_418_label() {}
+
+    /// Windows ConPTY trigger-animation E2E for the `:q!`
+    /// parade is tracked separately for v0.1 because this suite
+    /// depends on Unix-only `rexpect`.
+    /// Tracking issue: <https://github.com/kurone-kito/qorrection/issues/65>.
+    #[test]
+    #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
+    fn q9_armed_helper_q_bang_shows_nine_car_parade() {}
 
     /// Windows ConPTY E2E coverage is tracked separately for
     /// v0.1 because this suite depends on Unix-only `rexpect`.
