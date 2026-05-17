@@ -71,6 +71,24 @@ mod unix {
         format!("QUEUE(?:[^\\n]*QUEUE){{{}}}", labels.saturating_sub(1))
     }
 
+    fn terminal_flag_is_enabled(mode_line: &str, flag: &str) -> bool {
+        let disabled = format!("-{flag}");
+        let mut state = None;
+
+        for token in mode_line
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+            .filter(|token| !token.is_empty())
+        {
+            if token == flag {
+                state = Some(true);
+            } else if token == disabled {
+                state = Some(false);
+            }
+        }
+
+        state.unwrap_or_else(|| panic!("expected {flag:?} in stty output: {mode_line:?}"))
+    }
+
     #[test]
     fn q9_cat_passthrough_echoes_input_and_exits_zero() -> Result<(), Box<dyn std::error::Error>> {
         let mut command = q9();
@@ -434,6 +452,68 @@ mod unix {
         assert!(
             remaining.contains("child terminated by signal 15"),
             "expected wrapper SIGTERM path to surface SIGTERM diagnostic, got {remaining:?}"
+        );
+        Ok(())
+    }
+
+    /// Issue #62 E2E coverage: after the wrapper receives
+    /// SIGTERM and shuts down, the host PTY must regain the same
+    /// canonical-mode bit it had before `q9` entered raw mode.
+    #[test]
+    fn q9_wrapper_sigterm_restores_canonical_mode() -> Result<(), Box<dyn std::error::Error>> {
+        let trigger_dir = tempfile::tempdir()?;
+        let trigger_path = trigger_dir.path().join("sigterm-trigger");
+
+        let mut command = Command::new("sh");
+        let script = format!(
+            "stty cols {LONG_ANIMATION_COLS} rows {PTY_ROWS}\n\
+             before=$(stty -a | tr '\\n' ' ')\n\
+             printf 'MODE_BEFORE:%s\\n' \"$before\"\n\
+             \"$1\" sh -c 'printf READY\\n; exec sleep 30' &\n\
+             qpid=$!\n\
+             while [ ! -f \"$2\" ]; do\n\
+               sleep 0.05\n\
+             done\n\
+             kill -TERM \"$qpid\"\n\
+             wait \"$qpid\"\n\
+             rc=$?\n\
+             after=$(stty -a | tr '\\n' ' ')\n\
+             printf 'Q9_EXIT:%s\\n' \"$rc\"\n\
+             printf 'MODE_AFTER:%s\\n' \"$after\"\n"
+        );
+        command
+            .arg("-c")
+            .arg(script)
+            .arg("driver")
+            .arg(env!("CARGO_BIN_EXE_q9"))
+            .arg(&trigger_path);
+        command.env_remove("QORRECTION_LOG");
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        let (_, before_line) = session.exp_regex("MODE_BEFORE:[^\\r\\n]+")?;
+        session.exp_string("READY")?;
+
+        std::fs::write(&trigger_path, b"go")?;
+
+        let (_, exit_line) = session.exp_regex("Q9_EXIT:[0-9]+")?;
+        let (_, after_line) = session.exp_regex("MODE_AFTER:[^\\r\\n]+")?;
+        let _remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => panic!("expected wrapper shell to exit 0 after q9 shutdown, got {other:?}"),
+        }
+
+        assert_eq!(
+            exit_line, "Q9_EXIT:143",
+            "expected q9 to exit 143, got {exit_line:?}"
+        );
+        let before_mode = before_line.trim_start_matches("MODE_BEFORE:");
+        let after_mode = after_line.trim_start_matches("MODE_AFTER:");
+        assert_eq!(
+            terminal_flag_is_enabled(before_mode, "icanon"),
+            terminal_flag_is_enabled(after_mode, "icanon"),
+            "expected host canonical mode to be restored after SIGTERM: before={before_mode:?} after={after_mode:?}"
         );
         Ok(())
     }
