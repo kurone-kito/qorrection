@@ -83,6 +83,20 @@ jobs:
       - name: cargo check on MSRV
         run: cargo +${{ steps.msrv.outputs.version }} check --locked --all-targets --all-features
 
+  install-smoke:
+    name: Install smoke (cargo install --path .)
+    needs: [fmt, clippy, deny]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo install --path .
+        run: cargo install --path . --locked
+      - name: q9 -V
+        run: q9 -V
+
   test:
     name: Test (${{ matrix.os }})
     needs: [fmt, clippy, deny]
