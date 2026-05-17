@@ -104,4 +104,24 @@ jobs:
         # `--all-features` matches the surface that fmt/clippy/deny
         # exercise, so feature-gated code cannot pass lint while
         # remaining untested.
+        # INSTA_UPDATE=no is insta's default when CI=true, but set it
+        # explicitly so intent is visible in the workflow log.
+        env:
+          INSTA_UPDATE: "no"
         run: cargo test --locked --verbose --all-targets --all-features
+      - name: Show pending snapshot diffs
+        if: failure()
+        shell: bash
+        run: |
+          find . -path '*/snapshots/*.snap.new' | while IFS= read -r f; do
+            echo "=== $f ==="
+            cat "$f"
+            echo ""
+          done
+      - name: Upload pending snapshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pending-snapshots-${{ matrix.os }}
+          path: "**/*.snap.new"
+          if-no-files-found: ignore
