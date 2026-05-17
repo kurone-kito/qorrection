@@ -236,6 +236,38 @@ impl Drop for KillOnDropGuard {
 /// [`run_pump_session_with`].
 pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<ExitCode> {
     let SpawnedSession { child, master } = session;
+    #[cfg(unix)]
+    {
+        run_pump_session_unix(child, master, pump)
+    }
+    #[cfg(not(unix))]
+    {
+        let child = PtyChild { child };
+        let _master = master;
+        run_pump_session_with(child, pump, Deadlines::production())
+    }
+}
+
+#[cfg(unix)]
+fn run_pump_session_unix(
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    master: Box<dyn MasterPty + Send>,
+    pump: IoPump,
+) -> Result<ExitCode> {
+    run_pump_session_unix_with_setup(child, master, pump, SignalGuard::install_resize_only)
+}
+
+#[cfg(unix)]
+fn run_pump_session_unix_with_setup<Setup>(
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    master: Box<dyn MasterPty + Send>,
+    pump: IoPump,
+    setup: Setup,
+) -> Result<ExitCode>
+where
+    Setup: FnOnce() -> Result<SignalGuard>,
+{
+    let mut kill_guard = KillOnDropGuard::armed(child.clone_killer());
     let child = PtyChild { child };
     // Bind the master to a named local so it stays alive for
     // the entire supervised session. A wildcard (`master: _`)
@@ -244,23 +276,16 @@ pub(crate) fn run_pump_session(session: SpawnedSession, pump: IoPump) -> Result<
     // forwarder threads. The named binding extends its lifetime
     // to the end of the function, so the master is dropped only
     // after the supervisor returns.
-    #[cfg(unix)]
-    {
-        let signal_guard = SignalGuard::install_resize_only()?;
-        run_pump_session_with_signals(
-            child,
-            master.as_ref(),
-            &signal_guard,
-            size::current_size,
-            pump,
-            Deadlines::production(),
-        )
-    }
-    #[cfg(not(unix))]
-    {
-        let _master = master;
-        run_pump_session_with(child, pump, Deadlines::production())
-    }
+    let signal_guard = setup()?;
+    kill_guard.disarm();
+    run_pump_session_with_signals(
+        child,
+        master.as_ref(),
+        &signal_guard,
+        size::current_size,
+        pump,
+        Deadlines::production(),
+    )
 }
 
 /// Lifecycle core, parameterised over the [`SupervisedChild`]
@@ -628,6 +653,7 @@ mod tests {
         state: Arc<Mutex<MockState>>,
     }
 
+    #[derive(Debug)]
     struct MockState {
         polls_remaining: usize,
         scheduled: ExitStatus,
@@ -1250,6 +1276,86 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[derive(Debug)]
+    struct PortableMockChild {
+        state: Arc<Mutex<MockState>>,
+    }
+
+    #[cfg(unix)]
+    impl portable_pty::ChildKiller for PortableMockChild {
+        fn kill(&mut self) -> io::Result<()> {
+            let mut s = self.state.lock().unwrap();
+            s.kills += 1;
+            s.scheduled = ExitStatus::with_signal("Signal 15");
+            s.polls_remaining = 0;
+            Ok(())
+        }
+
+        fn clone_killer(&self) -> Box<dyn ChildKiller + Send + Sync> {
+            Box::new(MockKiller {
+                state: Arc::clone(&self.state),
+            })
+        }
+    }
+
+    #[cfg(unix)]
+    impl portable_pty::Child for PortableMockChild {
+        fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
+            let mut s = self.state.lock().unwrap();
+            s.try_waits += 1;
+            if s.polls_remaining == 0 {
+                Ok(Some(s.scheduled.clone()))
+            } else {
+                s.polls_remaining -= 1;
+                Ok(None)
+            }
+        }
+
+        fn wait(&mut self) -> io::Result<ExitStatus> {
+            Ok(self.state.lock().unwrap().scheduled.clone())
+        }
+
+        fn process_id(&self) -> Option<u32> {
+            None
+        }
+    }
+
+    #[cfg(unix)]
+    #[derive(Debug)]
+    struct DummyMaster;
+
+    #[cfg(unix)]
+    impl MasterPty for DummyMaster {
+        fn resize(&self, _size: PtySize) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn get_size(&self) -> anyhow::Result<PtySize> {
+            Ok(pty_size(80, 24))
+        }
+
+        fn try_clone_reader(&self) -> anyhow::Result<Box<dyn io::Read + Send>> {
+            Ok(Box::new(Cursor::new(Vec::<u8>::new())))
+        }
+
+        fn take_writer(&self) -> anyhow::Result<Box<dyn io::Write + Send>> {
+            Ok(Box::new(Vec::<u8>::new()))
+        }
+
+        fn process_group_leader(&self) -> Option<libc::pid_t> {
+            None
+        }
+
+        fn as_raw_fd(&self) -> Option<std::os::fd::RawFd> {
+            None
+        }
+
+        fn tty_name(&self) -> Option<std::path::PathBuf> {
+            None
+        }
+    }
+
+    #[cfg(unix)]
     #[derive(Default)]
     struct MockSignalSource {
         batches: RefCell<VecDeque<Vec<SignalEvent>>>,
@@ -1403,6 +1509,37 @@ mod tests {
         assert!(
             handle.lock().unwrap().kills >= 1,
             "resize failure must kill the child on unwind"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signal_setup_failure_kills_child_before_supervisor_handoff() {
+        let state = Arc::new(Mutex::new(MockState {
+            polls_remaining: 0,
+            scheduled: ExitStatus::with_exit_code(0),
+            kills: 0,
+            try_waits: 0,
+        }));
+
+        let err = run_pump_session_unix_with_setup(
+            Box::new(PortableMockChild {
+                state: Arc::clone(&state),
+            }),
+            Box::new(DummyMaster),
+            quiet_pump(),
+            || Err(io::Error::new(io::ErrorKind::AlreadyExists, "synthetic setup failure").into()),
+        )
+        .expect_err("setup failure must surface");
+
+        assert!(
+            matches!(&err, Error::Terminal(io_err) if io_err.kind() == io::ErrorKind::AlreadyExists),
+            "expected Terminal(AlreadyExists), got {err:?}"
+        );
+        assert_eq!(
+            state.lock().unwrap().kills,
+            1,
+            "outer setup guard must kill the child on setup failure"
         );
     }
 }
