@@ -46,4 +46,5 @@ Sleep 15s
 # 3. Reflexively `:q` like a Vim user. qorrection's ambulance sweeps in.
 Type ":q"
 Enter
-Sleep 5s
+Sleep 10s
+
