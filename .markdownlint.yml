@@ -6,10 +6,12 @@ line-length:
   code_blocks: false
   headings: false
   tables: false
-# Allows the use of duplicate headings across different sections while
-# still catching true duplicates among sibling headings.
-no-duplicate-heading:
-  siblings_only: true
+# Allows the use of duplicate headings. The default is unconditional
+# prohibition. Due to the `siblings_only` flag not working, it is necessary
+# to enable duplicate headings in the entire document. Mirrors upstream
+# `kurone-kito/idd-skill@80e7295` so re-imported docs pass without
+# divergence.
+no-duplicate-heading: false
 # Allows embedding of the specified HTML tag. The default is unconditional
 # prohibition. Allow for some valuable features, such as folding.
 no-inline-html:
