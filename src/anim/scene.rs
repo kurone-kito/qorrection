@@ -62,6 +62,24 @@ pub(crate) fn wq_frame_count(cols: u16) -> usize {
     sweep_frame_count(car::BIG, cols)
 }
 
+/// Maximum frames for the oversized `:wq` scene, per the contract in
+/// `docs/anim-large-art-contract.md` (§ Timing Budget: ≤ 60 frames).
+const OVERSIZED_MAX_FRAMES: usize = 60;
+
+/// Build the oversized `:wq` scene for ≥ 160-col terminals.
+///
+/// Uses [`car::OVERSIZED`] swept via a sub-sampled timeline capped at
+/// [`OVERSIZED_MAX_FRAMES`] frames so the animation stays within the
+/// budget in `docs/anim-large-art-contract.md`. The step size grows
+/// proportionally with terminal width so the cap always holds.
+pub fn wq_oversized(cols: u16) -> Vec<String> {
+    sweep_capped(car::OVERSIZED, cols, OVERSIZED_MAX_FRAMES)
+}
+
+pub(crate) fn wq_oversized_frame_count(cols: u16) -> usize {
+    sweep_capped_frame_count(car::OVERSIZED, cols, OVERSIZED_MAX_FRAMES)
+}
+
 /// Build the `:q!` nine-car parade scene.
 ///
 /// The parade reuses the standard `QUEUE` body nine times on a
@@ -121,6 +139,42 @@ fn sweep_frame_count(car_asset: &str, cols: u16) -> usize {
     let start_x = 1 - car_width;
     let end_x = i32::from(cols) - 1;
     (end_x - start_x + 1) as usize
+}
+
+/// Sweep one ASCII asset with a step size chosen to stay within
+/// `max_frames`. When the full sweep fits within the budget, this
+/// behaves identically to [`sweep`].
+fn sweep_capped(car_asset: &str, cols: u16, max_frames: usize) -> Vec<String> {
+    if cols == 0 || max_frames == 0 {
+        return Vec::new();
+    }
+    let car_width = car::max_width(car_asset) as i32;
+    let start_x = 1 - car_width;
+    let end_x = i32::from(cols) - 1;
+    let total = (end_x - start_x + 1) as usize;
+    let step = total.div_ceil(max_frames).max(1);
+    let mut phase = SirenPhase::Fi;
+    let mut frames = Vec::with_capacity(total.div_ceil(step));
+    let mut x = start_x;
+    while x <= end_x {
+        let raw = frame::frame(car_asset, x, phase);
+        frames.push(clip_right(&raw, cols as usize));
+        phase = phase.flip();
+        x += step as i32;
+    }
+    frames
+}
+
+fn sweep_capped_frame_count(car_asset: &str, cols: u16, max_frames: usize) -> usize {
+    if cols == 0 || max_frames == 0 {
+        return 0;
+    }
+    let car_width = car::max_width(car_asset) as i32;
+    let start_x = 1 - car_width;
+    let end_x = i32::from(cols) - 1;
+    let total = (end_x - start_x + 1) as usize;
+    let step = total.div_ceil(max_frames).max(1);
+    total.div_ceil(step)
 }
 
 /// Move a multi-car convoy across the visible width.
