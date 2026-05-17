@@ -15,6 +15,25 @@ missing or disagrees.
 **Abort conditions**: A0-T, A1, A3 (default; see decision tree).
 **Early stop condition**: A0-T, A4, or A4.5 (no claim made — see below).
 
+## Authoring label guard
+
+The configured authoring label is `issueAuthoring.authoringLabelName`
+(default: `status:authoring`); the stale threshold is
+`issueAuthoring.authoringStaleAge` (default: `PT4H`).
+
+A0-T, A0-O, and A3 must treat a matching label as not startable. A0-T
+reports `Issue #N is currently being authored` and stops before claim;
+A0-O and A3 filter the issue out. For each skipped issue, fetch the
+latest matching `labeled` timeline event. If the label age exceeds
+`authoringStaleAge`, emit:
+
+```text
+Warning: Issue #N has carried the authoring label for {duration}; the authoring session may be stalled.
+```
+
+If the timestamp is unavailable, still skip the issue and report that the
+stale-authoring age could not be checked.
+
 ## A0-T — Explicit issue target shortcut
 
 Use this shortcut only when the current operator request contains one
@@ -34,7 +53,10 @@ selection. Before A5, run targeted readiness and viability checks against
 that issue only:
 
 1. Re-fetch the target issue.
-2. Apply the same readiness intent as A3 to the target:
+2. If the target issue carries the configured authoring label, report
+   `Issue #N is currently being authored`, run the stale-authoring
+   warning check above, and stop without claiming.
+3. Apply the same readiness intent as A3 to the target:
    - no `status:blocked-by-human` or `status:needs-decision` label;
    - no open dependent issues, except parent epics or aggregate issues
      that are acceptable under A3;
@@ -45,11 +67,11 @@ that issue only:
      markers resolve through the same scoped body-content lookup used by
      A3, and the matching roadmap work is closed or otherwise complete;
    - no external human coordination is required to start.
-3. Run the normal A4 viability gate against the target only.
-4. If `.github/idd/config.json` exists and is valid and
+4. Run the normal A4 viability gate against the target only.
+5. If `.github/idd/config.json` exists and is valid and
    `skipIssueAuthorApprovalGate` is `true`, skip the issue-author
    approval gate and keep the target selected.
-5. Otherwise, apply the same issue-author approval evaluation used in
+6. Otherwise, apply the same issue-author approval evaluation used in
    **A3.5**:
    - use `maintainerApprovalActorPolicy` from `.github/idd/config.json`
      when present; if absent, default to
@@ -111,6 +133,7 @@ body satisfies **all** of the following:
   `<!-- qorrection-blocked-by: … -->` marker.
 - Does NOT have a `status:blocked-by-human` or `status:needs-decision`
   label.
+- Does NOT have the configured authoring label.
 - Does NOT contain visible `Blocked by #NNN` lines where the referenced
   issue is open (apply the same fail-safe as A3: if a reference cannot
   be resolved, treat as blocked).
@@ -217,8 +240,26 @@ referenced issues. Collect only **open** issues.
 - Incidental narrative mentions (e.g., "Similar to #NNN") without an
   explicit task, sub-issue, or dependency relationship
 
-Traverse referenced issues regardless of their open/closed state;
-include only **open** issues in the A2 candidate set.
+Traverse referenced issues regardless of their open/closed state.
+
+**Roadmap node classification**: any issue carrying the `roadmap` label
+or containing an
+`<!-- qorrection-roadmap-id: ... -->` marker is a
+**roadmap node**, not an execution leaf. Roadmap nodes are
+traversal-only coordination nodes:
+
+- Continue walking their outbound references to reach execution leaf
+  issues below them.
+- Do **not** add roadmap nodes to the A2 candidate set, even when open.
+- Closed intermediate roadmap nodes must still be traversed so open
+  descendants cannot be hidden behind a closed parent.
+- Only non-roadmap open issues (execution leaves) advance to
+  A3/A4/A4.5/A5.
+- Track open roadmap nodes separately and report them alongside the A2
+  execution candidates.
+- The root roadmap selected by A1 is the traversal starting point and
+  is not added to the roadmap-node set; only issues discovered through
+  its outbound references are classified and reported.
 
 **Permitted repo-wide queries** — only the following scoped lookups may
 touch issues outside the roadmap traversal graph:
@@ -250,7 +291,7 @@ touch issues outside the roadmap traversal graph:
   selected candidate and is not added to any candidate set.
 
 **Prohibited in all other contexts** — the following must not be used in
-any phase except as listed above, or when A3 step 4 explicit opt-in
+any phase except as listed above, or when A3 step 5 explicit opt-in
 authorizes an alternate scope for the current run:
 
 - `gh issue list` or any variant
@@ -268,15 +309,16 @@ authorizes an alternate scope for the current run:
   unresolvable with the reason, skip that branch, and continue with the
   rest of the traversal. This is not an enumeration failure.
 
-Report every A2 candidate with its provenance path from the roadmap
-(e.g., `#222 → #228 → #257`) before passing to A3. Also report any
-unresolvable references encountered during traversal.
+Report every A2 execution candidate with its provenance path (e.g.,
+`#222 → #228 → #257`), open roadmap nodes encountered, and any
+unresolvable references before passing to A3.
 
 ## A3 — Filter to ready-to-start
 
 From A2, keep only issues that satisfy **all** of the following:
 
 - No `status:blocked-by-human` or `status:needs-decision` label
+- No configured authoring label
 - No open dependent issues (parent epics / aggregate issues that are
   still open are acceptable)
 - All dependency issues are closed or otherwise completed. Check both
@@ -292,7 +334,8 @@ From A2, keep only issues that satisfy **all** of the following:
   migration integrity problem such as a typo, deleted issue, or
   incomplete migration). If multiple issues match, treat as blocked if
   any is open.
-- No external human coordination required to start
+- No external human coordination required to start; otherwise keep
+  scanning
 
 **When A2 finds zero candidates, or when zero issues survive A3
 filtering**, apply the following decision tree — do not silently expand
@@ -303,27 +346,28 @@ scope:
    (Unresolvable individual references are already pruned in A2 and do
    not trigger this step.)
 
-2. **A2 empty** (roadmap has no outbound references, all referenced
-   issues are closed, or all branches were skipped due to unresolvable
-   references): report that A2 found zero open candidates — include any
-   skipped unresolvable references — then proceed to step 4.
+2. **A2 empty — only open roadmap nodes remain** (all reachable open
+   issues are roadmap nodes, not execution leaves): report the node
+   list with provenance paths. These nested roadmaps need A1.5 audit
+   or further leaf-issue population. Do not treat them as candidates.
+   Proceed to step 5.
 
-3. **A3 filtered to zero** (A2 found candidates but all were filtered
-   out): report each candidate and the filter criterion it failed, then
-   proceed to step 4.
+3. **A2 empty** (no open candidates, no roadmap nodes): report zero
+   open candidates and skipped references; proceed to step 5.
+
+4. **A3 filtered to zero** (A2 found execution candidates but all were
+   filtered out): report each candidate and the filter criterion it
+   failed, then proceed to step 5.
 
    **Diagnostic — all candidates blocked by an open roadmap**: if every
-   candidate is blocked because its
-   `<!-- qorrection-blocked-by: X -->` marker points to a
-   roadmap issue that is still open, the markers are likely misused as
-   grouping tags rather than as true sequential dependencies. Sub-tasks
-   that should be worked on while the roadmap is open belong in the
-   roadmap's task list as `- [ ] #NNN` entries; the `blocked-by` marker
-   is reserved for issues that must wait for a separate, prior roadmap to
-   close. Report this pattern explicitly so the operator can correct the
-   issue setup.
+   candidate is blocked by a
+   `<!-- qorrection-blocked-by: X -->` marker that points
+   to an open roadmap, the markers may be misused as grouping tags.
+   Sub-tasks that run while the roadmap is open belong in the task list
+   (`- [ ] #NNN`); the `blocked-by` marker is for issues that must wait
+   for a separate roadmap to close first.
 
-4. **Request explicit opt-in** — ask the operator: "No roadmap-scoped
+5. **Request explicit opt-in** — ask the operator: "No roadmap-scoped
    issues are available. Do you want to expand the search scope for this
    run? If so, specify the alternate scope." An agent is **unattended**
    if it cannot wait for and receive a same-run operator reply. Then:
@@ -375,7 +419,8 @@ Candidates that fail the gate are **not** ready-to-start. Keep them in
 an **approval-needed fallback bucket** ordered by ascending issue number.
 Continue to A4 with only the startable candidates. Preserve any earlier
 A0-O filtering from `orphan-first-policy`; this gate never widens
-previously excluded orphan candidates back into scope.
+previously excluded orphan candidates back into scope. Keep fallback
+issues visible; do not drop them.
 
 If no startable candidates remain but the approval-needed fallback
 bucket is non-empty:
@@ -504,30 +549,10 @@ for a separate, prior roadmap to close before they can start (cross-
 phase sequential dependency). Using it for grouping causes A3 to block
 every sub-task for the entire lifetime of the roadmap.
 
-## Scope invariant (detailed query allowlist)
+## Scope invariant (summary)
 
-Agents must not widen issue-selection scope beyond what the roadmap
-explicitly references (directly or transitively) without explicit
-operator instruction. Specifically:
-
-- A single explicit issue target provided by the operator in the current
-  run is explicit operator instruction for that one issue only. Use the
-  A0-T path; do not use the target as permission to search for alternate
-  issues.
-- Repo-wide searches (`gh issue list`, `gh search`, label-based queries)
-  are permitted only in **A1** (to locate the roadmap itself), in
-  **A0-T** for the scoped body-content lookup needed to resolve the
-  explicit target's `qorrection-blocked-by` markers, in
-  **A0-O** when `issue-scope` is `orphan-first` (body-content filter to
-  find issues lacking `qorrection-roadmap-id` and
-  `qorrection-blocked-by` markers), and for the scoped
-  `qorrection-roadmap-id` body-content lookup required by
-  A3's dependency-marker check. A1.5 may also run a narrow repo-wide
-  duplicate/reuse check for a specific autonomous gap before creating a
-  follow-up issue; the result may only prevent a duplicate or link an
-  existing issue back to the selected roadmap, not expand the candidate
-  set.
-- After a zero-result report at A3, an operator may grant a one-time
-  opt-in for the current run, specifying an alternate scope.
-- Opt-in must be granted interactively during the current run. Prior or
-  standing instructions do not count as opt-in.
+Do not widen issue-selection scope beyond the roadmap traversal except
+for the explicit query allowlist already defined in A0-T, A0-O, A1,
+A1.5, A3, and A4.5, or for a same-run operator opt-in after a
+zero-result report. A single explicit target authorizes only that issue;
+prior or standing instructions do not count as opt-in.
