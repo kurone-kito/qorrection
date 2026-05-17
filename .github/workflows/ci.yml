@@ -113,6 +113,18 @@ jobs:
       - name: cargo test (PTY E2E, unix only)
         run: cargo test --locked --verbose --test pty_e2e
 
+  publish-dry-run:
+    name: Publish dry-run (cargo publish --dry-run)
+    needs: [fmt, clippy, deny]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish --dry-run
+        run: cargo publish --dry-run --locked
+
   test:
     name: Test (${{ matrix.os }})
     needs: [fmt, clippy, deny]
