@@ -3,6 +3,18 @@
 //! The real wrapper path only activates when both stdio streams
 //! are TTYs. `rexpect` gives the subprocess that environment, so
 //! these tests cover behavior that `assert_cmd` cannot observe.
+//!
+//! ## Windows policy (v0.1)
+//!
+//! All tests in this file are gated with `#[cfg(unix)]` rather
+//! than `#[cfg_attr(not(unix), ignore)]`. The distinction is
+//! intentional: `rexpect` is a Unix-only dev-dependency (see
+//! `[target.'cfg(unix)'.dev-dependencies]` in `Cargo.toml`), so
+//! the rexpect-based test bodies cannot compile on Windows at all.
+//! Using `#[cfg(unix)]` correctly excludes them from the Windows
+//! build rather than compiling them into ignored stubs.
+//!
+//! Tracking: <https://github.com/kurone-kito/qorrection/issues/64>
 
 mod support;
 

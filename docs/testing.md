@@ -50,13 +50,26 @@ a real pseudo-terminal:
 - Confirming raw mode is restored on cooperative SIGTERM.
 - Confirming SIGWINCH forwarding reaches the child PTY.
 
-**Windows policy (v0.1):** all PTY E2E tests are `#[ignore]` on
+**Windows policy (v0.1):** all PTY E2E tests are skipped on
 Windows. ConPTY behavior diverges from Unix PTYs in ways that
 demand a separate harness (no `rexpect` equivalent that we trust
 yet), and the v0.1 surface for Windows is best-effort polling
 (see plan §6 D-RESIZE). Snapshot + unit tests still run on
-Windows. Each ignored test must carry a doc comment with a
-tracking issue link so the ignore is auditable.
+Windows.
+
+Two skip mechanisms are in use; choose the one that fits the
+test's compilation constraints:
+
+- `#[cfg_attr(windows, ignore = "reason; tracking issue URL")]` —
+  use this when the test body can compile on Windows but should
+  not run. Every ignored test must carry the tracking issue URL
+  so the skip is auditable. See `tests/pty_smoke.rs` for an
+  example (tracking issue [#84](https://github.com/kurone-kito/qorrection/issues/84)).
+- `#[cfg(unix)]` — use this when the test body uses a Unix-only
+  dev-dependency (e.g. `rexpect`) that cannot compile on Windows.
+  The `pty_e2e.rs` module is excluded this way; see its module
+  comment for the rationale and tracking reference
+  ([#64](https://github.com/kurone-kito/qorrection/issues/64)).
 
 Mark a Unix test `#[ignore]` only if it is truly flaky in CI;
 document the reason in a doc comment above the test. Always
