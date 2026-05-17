@@ -181,7 +181,14 @@ fn portable_pty_echoes_hi() {
     // hide behind a discarded `Result`.
     reader_thread.join().expect("reader thread panicked");
 
-    assert!(status.success(), "child exited non-zero: {status:?}");
+    // On Windows ConPTY, ClosePseudoConsole terminates the attached
+    // process with STATUS_CONTROL_C_EXIT (0xC000013A). Accept this as
+    // the expected teardown exit; Unix must exit with code 0.
+    #[cfg(windows)]
+    let exit_ok = status.success() || status.code() == Some(0xC000013A_u32 as i32);
+    #[cfg(not(windows))]
+    let exit_ok = status.success();
+    assert!(exit_ok, "child exited non-zero: {status:?}");
 
     let captured_str = String::from_utf8_lossy(&captured);
     assert!(
