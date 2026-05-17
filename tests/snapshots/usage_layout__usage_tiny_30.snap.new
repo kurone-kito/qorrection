@@ -1,6 +1,7 @@
 ---
 source: tests/usage_layout.rs
-expression: render(39)
+assertion_line: 13
+expression: render(30)
 ---
 qorrection 0.1.0
 qorrection: PTY wrapper that intercepts Vim-style quit commands

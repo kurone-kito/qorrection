@@ -1,5 +1,6 @@
 ---
 source: tests/usage_layout.rs
+assertion_line: 23
 expression: render(100)
 ---
     _______                     qorrection 0.1.0

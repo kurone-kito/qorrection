@@ -1,7 +1,9 @@
 ---
 source: tests/usage_layout.rs
-expression: render(39)
+assertion_line: 18
+expression: render(60)
 ---
+[QQ] qorrection -- :q :wq :q!
 qorrection 0.1.0
 qorrection: PTY wrapper that intercepts Vim-style quit commands
 and dispatches FI-FO-FI-FO ambulance gags.
