@@ -30,13 +30,32 @@ pub(crate) const FALLBACK_SIZE: PtySize = PtySize {
 /// Snapshot the host terminal's current size for a freshly
 /// spawned PTY child.
 pub(crate) fn initial_size() -> PtySize {
-    initial_size_with(crossterm::terminal::size)
+    current_size().unwrap_or(FALLBACK_SIZE)
 }
 
 /// Pure variant of [`initial_size`]: derives the size from an
 /// injected `query` instead of the real `crossterm` call. Used
 /// directly by unit tests; production code calls [`initial_size`].
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn initial_size_with<F>(query: F) -> PtySize
+where
+    F: FnOnce() -> std::io::Result<(u16, u16)>,
+{
+    current_size_with(query).unwrap_or(FALLBACK_SIZE)
+}
+
+/// Snapshot the host terminal's current size for a live resize.
+///
+/// Returns `None` when the query fails or reports a degenerate
+/// `(0, 0)` so callers can preserve the child's current size
+/// instead of forcing a fallback.
+pub(crate) fn current_size() -> Option<PtySize> {
+    current_size_with(crossterm::terminal::size)
+}
+
+/// Pure variant of [`current_size`]: derives the size from an
+/// injected `query` instead of the real `crossterm` call.
+pub(crate) fn current_size_with<F>(query: F) -> Option<PtySize>
 where
     F: FnOnce() -> std::io::Result<(u16, u16)>,
 {
@@ -46,8 +65,9 @@ where
             rows,
             pixel_width: 0,
             pixel_height: 0,
-        },
-        _ => FALLBACK_SIZE,
+        }
+        .into(),
+        _ => None,
     }
 }
 
@@ -83,6 +103,23 @@ mod tests {
                 (size.cols, size.rows),
                 (FALLBACK_SIZE.cols, FALLBACK_SIZE.rows),
                 "expected fallback for query={pair:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn current_size_returns_none_on_query_err() {
+        let size = current_size_with(|| Err(io::Error::other("no terminal")));
+        assert!(size.is_none());
+    }
+
+    #[test]
+    fn current_size_returns_none_when_query_returns_zero() {
+        for pair in [(0, 0), (0, 24), (80, 0)] {
+            let size = current_size_with(move || Ok(pair));
+            assert!(
+                size.is_none(),
+                "expected no runtime size for query={pair:?}"
             );
         }
     }
