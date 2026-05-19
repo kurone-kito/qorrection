@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-20
+
 ### Added
 
 - **Oversized cameo track** for `:wq` on wide terminals (≥ 160 columns).
@@ -20,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `WidthBucket::Oversized` width bucket for ≥ 160-column terminals.
   - `:wq` at ≥ 160 cols renders the oversized locomotive sweep (≤ 60 frames at
     50 ms each); `:q` and `:q!` keep their existing large-bucket scenes.
+
+### Notes
+
+- This is the first release published to [crates.io](https://crates.io/crates/qorrection).
+  v0.1.0 shipped a GitHub Release on 2026-05-17 but never reached crates.io: the
+  `publish-crates-io` workflow job was added after the v0.1.0 tag was cut, and the
+  v0.1.0 GitHub Release is immutable, so a retroactive publish through the
+  tag-dispatch path was not possible. Bumping to v0.1.1 lets the current workflow
+  run end-to-end against a fresh, mutable release.
 
 ## [0.1.0] - 2026-05-17
 
@@ -37,5 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graceful SIGTERM shutdown that finishes any in-flight animation before exiting.
 - Cross-platform support: Linux, macOS, and Windows (ConPTY).
 
-[Unreleased]: https://github.com/kurone-kito/qorrection/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kurone-kito/qorrection/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/kurone-kito/qorrection/releases/tag/v0.1.1
 [0.1.0]: https://github.com/kurone-kito/qorrection/releases/tag/v0.1.0
