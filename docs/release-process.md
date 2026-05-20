@@ -84,9 +84,12 @@ the publish itself happens on a GitHub runner using the
    ```
 
    The dispatch run re-executes `verify-tag` and the build matrix,
-   then runs `Publish to crates.io (manual)`: `cargo publish --dry-run`
-   followed by the real `cargo publish` using the
-   `CARGO_REGISTRY_TOKEN` repository secret.
+   then runs `Publish to crates.io (manual)`:
+   `cargo publish --dry-run --locked` followed by the real
+   `cargo publish --locked`, both using the `CARGO_REGISTRY_TOKEN`
+   repository secret. The `--locked` flag matches the `release.yml`
+   step definitions exactly and ensures the publish uses the
+   committed `Cargo.lock`.
 
    The dispatch run's `Publish GitHub Release` job **is expected to
    fail** with `Cannot delete asset from an immutable release`. The
