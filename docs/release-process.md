@@ -49,8 +49,9 @@ the publish itself happens on a GitHub runner using the
    Signing key setup (GPG, SSH, or otherwise) is a per-developer
    environment concern — see [git's `gpg.format` documentation](https://git-scm.com/docs/git-config#Documentation/git-config.txt-gpgformat)
    for the supported formats and how to wire `user.signingkey` to the
-   right key material for each. Never bypass with `--no-gpg-sign`; if
-   signing fails, fix the local environment first.
+   right key material for each. Never push an unsigned release tag
+   (and never opt out via `--no-sign` / dropping `-s`); if signing
+   fails, fix the local environment first.
 
 3. **Push the tag.**
 
