@@ -230,9 +230,19 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # Runs only on explicit workflow_dispatch to prevent accidental
-    # publishes on every tag push.  The user must manually trigger
-    # this job after verifying the GitHub Release looks correct.
-    if: github.event_name == 'workflow_dispatch'
+    # publishes on every tag push. `always()` is required because
+    # `verify-tag` skips on non-tag refs (e.g. when dispatched from
+    # `main` for an emergency re-publish), and GitHub Actions
+    # propagates that skip transitively through the implicit
+    # `success()` gate to every downstream job whose `if:` does not
+    # opt in to `always()`. Without it, `publish-crates-io` would
+    # also be silently skipped from non-tag dispatches even though
+    # its only direct `needs:` (`build`) ran via its own `always()`
+    # guard.
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
     steps:
