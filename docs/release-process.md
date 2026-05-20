@@ -12,7 +12,11 @@ bump PR (see [`docs/idd-workflow.md`](idd-workflow.md)).
 ## Routine release procedure
 
 The pipeline lives in [`.github/workflows/release.yml`](../.github/workflows/release.yml).
-A release is two GitHub Actions runs and one manual `cargo publish`:
+A release is two GitHub Actions runs: the tag-push run that creates
+the GitHub Release, and a `workflow_dispatch` that runs the
+`cargo publish` step inside CI. No local `cargo publish` is needed —
+the publish itself happens on a GitHub runner using the
+`CARGO_REGISTRY_TOKEN` repository secret.
 
 1. **Author and merge the in-repo bump PR.** Touch only:
    - `Cargo.toml`: bump `version = "X.Y.Z"`.
@@ -24,28 +28,36 @@ A release is two GitHub Actions runs and one manual `cargo publish`:
      Add a new empty `## [Unreleased]` at the top and update the
      link-reference footer.
    - `tests/snapshots/usage_layout__*.snap`: refresh the eight snapshot
-     files that embed the version string in rendered usage output. A
-     simple `sed -i "s/qorrection X.Y.Z-prev/qorrection X.Y.Z/g"` over
-     `tests/snapshots/usage_layout__*.snap` works; the diff per file is
-     a single line.
+     files that embed the version string in rendered usage output. Each
+     file's diff is a single line (the version string). Use whichever
+     update path is convenient — `cargo insta review` / `cargo insta accept`
+     when `cargo-insta` is installed, or an in-editor find-and-replace
+     across the eight files.
 
 2. **Tag the merge commit.** From a clean `main` at the merge commit,
-   create a signed annotated tag:
+   create a **signed annotated tag**:
 
    ```sh
-   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git tag -s -a vX.Y.Z -m "vX.Y.Z"
    ```
 
-   `tag.gpgsign = true` is set globally for this repository. If the GPG
-   private key is offline (typical for this account — `gpg --list-secret-keys`
-   shows `sec#`), fall back to the SSH-signing alias:
+   Drop the `-s` (or rely on `tag.gpgsign = true` if you have it set in
+   your own git config) only when your environment already signs by
+   default. Past qorrection tags (e.g. v0.1.0, v0.1.1) are signed; new
+   tags should match.
+
+   If the GPG private key isn't available on the machine you're
+   releasing from, use SSH signing instead by setting
+   `gpg.format = ssh` and pointing `user.signingkey` at an SSH key
+   accepted by GitHub for signing — either as global config or inline:
 
    ```sh
-   git tag-ssh -a vX.Y.Z -m "vX.Y.Z"
+   git -c gpg.format=ssh -c user.signingkey=~/.ssh/<your-key>.pub \
+     tag -s -a vX.Y.Z -m "vX.Y.Z"
    ```
 
-   The alias forces `gpg.format=ssh` with the configured
-   `~/.ssh/id_ed25519-*.pub`. Never bypass with `--no-gpg-sign`.
+   Never bypass with `--no-gpg-sign`; if signing fails, fix the
+   environment instead.
 
 3. **Push the tag.**
 
@@ -86,14 +98,17 @@ A release is two GitHub Actions runs and one manual `cargo publish`:
 5. **Verify the publish.**
 
    ```sh
-   curl -A "qorrection-release-verify (krone@kit.black)" \
+   curl -A "qorrection-release-verify (you@example.com)" \
      https://crates.io/api/v1/crates/qorrection \
      | jq '{max_version: .crate.max_stable_version, versions: [.versions[] | {num, created_at, yanked}]}'
    ```
 
-   crates.io requires a contact `User-Agent`; the default `curl/...`
-   string is rejected with HTTP 403 and a data-access-policy message.
-   The response should report `max_stable_version: "X.Y.Z"` and the
+   crates.io requires a contactable `User-Agent` per its
+   [data access policy](https://crates.io/data-access). The default
+   `curl/...` string is rejected with HTTP 403 and a
+   data-access-policy message; substitute your own maintainer email
+   (or the project's published contact) in the `-A` header. The
+   response should report `max_stable_version: "X.Y.Z"` and the
    matching version entry with `yanked: false`.
 
 ## Lessons from v0.1.0 (postmortem)
