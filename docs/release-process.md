@@ -116,10 +116,12 @@ crates.io until v0.1.1 was cut. Three independent GitHub-side
 behaviors compounded into a publish that could not be performed
 retroactively:
 
-- **GitHub Release immutability.** Releases default to
-  `isImmutable: true`. `softprops/action-gh-release` cannot replace
-  or remove assets on an immutable Release; subsequent workflow runs
-  that target the same tag fail with
+- **GitHub Release immutability.** Releases on this repository are
+  created as immutable — `gh release view vX.Y.Z --json isImmutable`
+  reports `true` for both v0.1.0 and v0.1.1.
+  `softprops/action-gh-release` cannot replace or remove assets on an
+  immutable Release; subsequent workflow runs that target the same
+  tag fail with
   `Validation Failed: Cannot delete asset from an immutable release`.
   Once the tag-push run creates the Release, that tag's assets are
   frozen.
