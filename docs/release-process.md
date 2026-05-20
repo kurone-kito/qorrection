@@ -41,23 +41,16 @@ the publish itself happens on a GitHub runner using the
    git tag -s -a vX.Y.Z -m "vX.Y.Z"
    ```
 
-   Drop the `-s` (or rely on `tag.gpgsign = true` if you have it set in
-   your own git config) only when your environment already signs by
-   default. Past qorrection tags (e.g. v0.1.0, v0.1.1) are signed; new
-   tags should match.
+   Drop the explicit `-s` only when your environment already signs by
+   default (e.g. `tag.gpgsign = true` is in your global git config).
+   Past qorrection tags (e.g. v0.1.0, v0.1.1) are signed; new tags
+   should match.
 
-   If the GPG private key isn't available on the machine you're
-   releasing from, use SSH signing instead by setting
-   `gpg.format = ssh` and pointing `user.signingkey` at an SSH key
-   accepted by GitHub for signing — either as global config or inline:
-
-   ```sh
-   git -c gpg.format=ssh -c user.signingkey=~/.ssh/<your-key>.pub \
-     tag -s -a vX.Y.Z -m "vX.Y.Z"
-   ```
-
-   Never bypass with `--no-gpg-sign`; if signing fails, fix the
-   environment instead.
+   Signing key setup (GPG, SSH, or otherwise) is a per-developer
+   environment concern — see [git's `gpg.format` documentation](https://git-scm.com/docs/git-config#Documentation/git-config.txt-gpgformat)
+   for the supported formats and how to wire `user.signingkey` to the
+   right key material for each. Never bypass with `--no-gpg-sign`; if
+   signing fails, fix the local environment first.
 
 3. **Push the tag.**
 
