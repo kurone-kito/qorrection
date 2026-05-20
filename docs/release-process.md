@@ -85,11 +85,12 @@ the publish itself happens on a GitHub runner using the
 
    The dispatch run re-executes `verify-tag` and the build matrix,
    then runs `Publish to crates.io (manual)`:
-   `cargo publish --dry-run --locked` followed by the real
-   `cargo publish --locked`, both using the `CARGO_REGISTRY_TOKEN`
-   repository secret. The `--locked` flag matches the `release.yml`
-   step definitions exactly and ensures the publish uses the
-   committed `Cargo.lock`.
+   `cargo publish --dry-run --locked` first, then the real
+   `cargo publish --locked` using the `CARGO_REGISTRY_TOKEN`
+   repository secret (only the real publish step receives the
+   token — the dry run does not need it). The `--locked` flag
+   matches the `release.yml` step definitions exactly and ensures
+   the publish uses the committed `Cargo.lock`.
 
    The dispatch run's `Publish GitHub Release` job **is expected to
    fail** with `Cannot delete asset from an immutable release`. The
@@ -103,7 +104,7 @@ the publish itself happens on a GitHub runner using the
    ```sh
    curl -A "qorrection-release-verify (you@example.com)" \
      https://crates.io/api/v1/crates/qorrection \
-     | jq '{max_version: .crate.max_stable_version, versions: [.versions[] | {num, created_at, yanked}]}'
+     | jq '{max_stable_version: .crate.max_stable_version, versions: [.versions[] | {num, created_at, yanked}]}'
    ```
 
    crates.io requires a contactable `User-Agent` per its
