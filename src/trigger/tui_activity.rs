@@ -1,8 +1,7 @@
 //! Output-side "child is repainting its own TUI" heuristic.
 //!
-//! [`AltScreenTracker`] (this module's sibling at
-//! [`crate::trigger::altscreen`]) only flips when the child uses
-//! the standard alt-screen mode-set sequences
+//! [`crate::trigger::altscreen::AltScreenTracker`] only flips
+//! when the child uses the standard alt-screen mode-set sequences
 //! (`\x1b[?1049h`, `\x1b[?1047h`, `\x1b[?47h`). Modern AI CLIs
 //! such as Codex CLI render a TUI without entering alt-screen —
 //! they repaint the primary screen with cursor positioning and
