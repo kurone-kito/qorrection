@@ -254,6 +254,50 @@ mod unix {
         Ok(())
     }
 
+    /// Issue #186 / #188 E2E coverage: when the wrapped child is
+    /// already drawing a TUI on the primary screen (here
+    /// emulated by a helper that emits `\x1b[2J\x1b[H` on
+    /// startup), typing a trigger literal must **not** acquire
+    /// the alt-screen overlay. The renderer falls back to a
+    /// single-line gag instead so the child's screen model
+    /// stays intact. Reproduces the Codex CLI corruption
+    /// reported in #186 once the heuristic in
+    /// `crate::trigger::tui_activity` flips
+    /// `InputPump::is_child_owning_screen` to `true`.
+    #[test]
+    fn q9_armed_helper_tui_active_child_uses_fallback_instead_of_alt_screen(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let helper = support::ArmedHelper::tui_clear_then_echo_stdin();
+        let mut command = q9();
+        command.env("PATH", helper.path()).arg(helper.command());
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        // Wait for the helper's TUI clear sequence to traverse the
+        // PTY so `OutputArbiter` has updated the shared pump's
+        // `TuiActivityTracker` before our trigger fires.
+        session.exp_string("\u{1b}[2J")?;
+        session.send_line(":q!")?;
+        // Look for the `:q!` fallback gag's signature substring
+        // — see `crate::anim::fallback::fallback`.
+        let before_gag = session.exp_string("[QQ]x9")?;
+        session.send_control('d')?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => {
+                panic!("expected armed helper to exit 0 after fallback path, got {other:?}")
+            }
+        }
+
+        let normalized = format!("{before_gag}{remaining}").replace("\r\n", "\n");
+        assert!(
+            !normalized.contains("\u{1b}[?1049h"),
+            "expected no alt-screen overlay when child is drawing its own TUI, got {normalized:?}"
+        );
+        Ok(())
+    }
+
     /// Issue #54 + #186 / #187 E2E coverage: when an allowlisted
     /// child is armed, typing `:wq` on a 120-column PTY must
     /// render the large scene that carries the spec-locked 418
@@ -657,6 +701,14 @@ mod windows {
     #[test]
     #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
     fn q9_armed_helper_q_bang_shows_nine_car_parade() {}
+
+    /// Windows ConPTY E2E for the TUI-active-child fallback path
+    /// is tracked separately for v0.1 because this suite depends
+    /// on Unix-only `rexpect`.
+    /// Tracking issue: <https://github.com/kurone-kito/qorrection/issues/65>.
+    #[test]
+    #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
+    fn q9_armed_helper_tui_active_child_uses_fallback_instead_of_alt_screen() {}
 
     /// Windows ConPTY trigger-animation E2E for a child exiting
     /// mid-animation is tracked separately for v0.1 because

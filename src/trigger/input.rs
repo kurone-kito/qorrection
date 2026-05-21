@@ -25,6 +25,7 @@ use super::{
     altscreen::AltScreenTracker,
     parser::{Outcome, Parser},
     paste::PasteTracker,
+    tui_activity::TuiActivityTracker,
 };
 
 /// Why an input byte bypassed the literal parser.
@@ -294,6 +295,7 @@ where
 pub struct InputPump {
     paste: PasteTracker,
     alt_screen: AltScreenTracker,
+    tui_activity: TuiActivityTracker,
     parser: Parser,
 }
 
@@ -338,6 +340,12 @@ impl InputPump {
         if was_alt_screen != now_alt_screen {
             self.parser.reset();
         }
+        // The TUI-activity tracker observes the same byte stream
+        // so it can flip the "child is repainting" flag for
+        // children that draw a TUI without entering the alt
+        // screen (Codex CLI and similar). See
+        // `crate::trigger::tui_activity` for the rationale.
+        self.tui_activity.feed(b);
         now_alt_screen
     }
 
@@ -355,6 +363,20 @@ impl InputPump {
 
     pub fn is_alt_screen(&self) -> bool {
         self.alt_screen.is_alt_screen()
+    }
+
+    /// Whether the wrapped child currently appears to own the
+    /// terminal — either through the standard alt-screen mode
+    /// set, or through the heuristic at
+    /// [`super::tui_activity::TuiActivityTracker`] for TUIs that
+    /// repaint the primary screen instead.
+    ///
+    /// The animation renderer consults this before deciding
+    /// whether to acquire the alt-screen overlay; when `true`,
+    /// it falls back to a non-overlay gag so the child's screen
+    /// model is not corrupted (roadmap #186 / fix #188).
+    pub fn is_child_owning_screen(&self) -> bool {
+        self.alt_screen.is_alt_screen() || self.tui_activity.is_tui_active()
     }
 }
 
@@ -833,6 +855,30 @@ mod tests {
         assert_eq!(
             outcomes_for_input(&mut pump, b":q!\n"),
             vec![Outcome::QBang]
+        );
+    }
+
+    #[test]
+    fn is_child_owning_screen_reflects_alt_screen_state() {
+        let mut pump = InputPump::new();
+        assert!(!pump.is_child_owning_screen());
+        pump.feed_child_output_slice(ENTER_ALT);
+        assert!(pump.is_child_owning_screen());
+        pump.feed_child_output_slice(LEAVE_ALT);
+        assert!(!pump.is_child_owning_screen());
+    }
+
+    #[test]
+    fn is_child_owning_screen_reflects_tui_activity() {
+        // Issue #188: a child that repaints the primary screen
+        // without entering alt-screen must still suppress the
+        // animation overlay.
+        let mut pump = InputPump::new();
+        pump.feed_child_output_slice(b"\x1b[2J\x1b[H");
+        assert!(!pump.is_alt_screen(), "TUI activity is not alt-screen");
+        assert!(
+            pump.is_child_owning_screen(),
+            "TUI activity should flag child-owns-screen"
         );
     }
 
