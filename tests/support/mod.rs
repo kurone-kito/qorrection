@@ -43,6 +43,34 @@ impl ArmedHelper {
         )
     }
 
+    /// Create a Unix helper that emulates a TUI: emits an
+    /// erase-display + cursor-home sequence on startup before
+    /// looping on stdin like [`echo_stdin`].
+    ///
+    /// `qorrection`'s `TuiActivityTracker` flips
+    /// `is_child_owning_screen` for a bounded window after
+    /// observing the erase-display signal, so the animation
+    /// renderer should route through `anim::fallback` instead of
+    /// the alt-screen overlay. This helper is the minimal repro
+    /// for that path; the bug fix is tracked by roadmap #186 /
+    /// issue #188.
+    ///
+    /// The Windows fallback script does **not** currently emit
+    /// the TUI clear sequence — cmd.exe's escape-handling story
+    /// is awkward, and every Windows PTY test that exercises
+    /// this path is `#[ignore = "Windows ConPTY trigger-animation
+    /// E2E is tracked by issue #65"]` until that work lands.
+    /// Adding a Windows-side clear (via PowerShell or a Rust
+    /// helper binary) should ride along with the #65 ConPTY
+    /// re-enablement.
+    #[allow(dead_code)]
+    pub fn tui_clear_then_echo_stdin() -> Self {
+        Self::from_scripts(
+            "#!/bin/sh\nprintf '\\033[2J\\033[H'\nwhile IFS= read -r line; do printf '%s\\n' \"$line\"; done\n",
+            "@echo off\r\nsetlocal EnableDelayedExpansion\r\n:loop\r\nset \"line=\"\r\nset /p line=\r\nif not defined line goto :eof\r\necho(!line!\r\ngoto loop\r\n",
+        )
+    }
+
     /// Create a helper that writes deterministic plain stdout.
     ///
     /// Shared integration-test fixtures are compiled once per

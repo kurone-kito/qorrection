@@ -18,6 +18,7 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::os::fd::RawFd;
 
+use crate::anim::fallback::{fallback, Trigger as FallbackTrigger};
 use crate::anim::render::{draw_frame, render_frame_count, render_plan, FRAME_DELAY};
 use crate::pty::forward::{
     spawn_cancellable_forwarder, spawn_forwarder, CancelHandle, CancellableReader, Direction,
@@ -240,10 +241,39 @@ fn render_animation<W>(
     host_stdout: &SharedWriter<W>,
     outcome: Outcome,
     frames_remaining: &AtomicUsize,
+    child_owns_screen: bool,
 ) -> io::Result<()>
 where
     W: Write,
 {
+    // When the wrapped child already owns the terminal —
+    // standard alt-screen, or a TUI repaint detected by
+    // `TuiActivityTracker` — overlaying the full animation with
+    // `EnterAlternateScreen`/`LeaveAlternateScreen` corrupts the
+    // child's screen model (roadmap #186 / fix #188). Emit the
+    // single-line fallback gag instead so the user still sees a
+    // response without disturbing the child's UI. No frames are
+    // in flight, so the wait/drain supervisor does not need any
+    // extended budget.
+    if child_owns_screen {
+        let Some(trigger) = fallback_trigger_for(outcome) else {
+            return Ok(());
+        };
+        let gag = fallback(trigger);
+        let mut writer = host_stdout.lock();
+        writer.write_all(gag.as_bytes())?;
+        // The host TTY is in raw mode (`crossterm::terminal::enable_raw_mode`
+        // via `crate::term::guard::RawGuard`) so an LF is not
+        // translated to CRLF; emit the carriage return explicitly
+        // to land the next byte on column 0.
+        // Without `\r` the gag would leave the cursor parked at
+        // the end of the gag text and any follow-up child output
+        // would draw a diagonal staircase.
+        writer.write_all(b"\r\n")?;
+        writer.flush()?;
+        return Ok(());
+    }
+
     let cols = render_cols();
     let Some(frame_count) = render_frame_count(outcome, cols) else {
         return Ok(());
@@ -279,6 +309,15 @@ where
     Ok(())
 }
 
+fn fallback_trigger_for(outcome: Outcome) -> Option<FallbackTrigger> {
+    match outcome {
+        Outcome::Q => Some(FallbackTrigger::Q),
+        Outcome::Wq => Some(FallbackTrigger::Wq),
+        Outcome::QBang => Some(FallbackTrigger::Bang),
+        Outcome::None => None,
+    }
+}
+
 struct TriggerWiring<PtyW, HOut> {
     host_to_child: HostToChildWriter<PtyW>,
     child_to_host: ChildToHostWriter<SharedWriter<HOut>>,
@@ -301,12 +340,34 @@ where
         let render_stdout = shared_stdout.clone();
         let render_progress = shared_render_progress();
         let callback_render_progress = render_progress.clone();
+        let callback_input = input.clone();
         TriggerWiring {
             host_to_child: HostToChildWriter::Armed(InputInterceptor::new(
                 pty_writer,
                 input.clone(),
                 move |outcome| {
-                    render_animation(&render_stdout, outcome, callback_render_progress.as_ref())
+                    // Snapshot the child-screen-ownership state at
+                    // trigger fire time. The `OutputArbiter`
+                    // (running on the child→host thread) keeps the
+                    // shared pump's trackers fresh as the child
+                    // emits bytes. This read therefore reflects
+                    // every child output byte already observed
+                    // when the trigger fired; the terminator byte
+                    // itself was just forwarded to the child but
+                    // the child has not yet had a chance to react,
+                    // so any TUI-active flag here was set by
+                    // earlier output and is the right signal for
+                    // "is the child currently drawing?".
+                    let child_owns_screen = match callback_input.lock() {
+                        Ok(g) => g.is_child_owning_screen(),
+                        Err(poisoned) => poisoned.into_inner().is_child_owning_screen(),
+                    };
+                    render_animation(
+                        &render_stdout,
+                        outcome,
+                        callback_render_progress.as_ref(),
+                        child_owns_screen,
+                    )
                 },
             )),
             child_to_host: ChildToHostWriter::Armed(OutputArbiter::new(

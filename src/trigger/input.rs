@@ -25,6 +25,7 @@ use super::{
     altscreen::AltScreenTracker,
     parser::{Outcome, Parser},
     paste::PasteTracker,
+    tui_activity::TuiActivityTracker,
 };
 
 /// Why an input byte bypassed the literal parser.
@@ -294,6 +295,7 @@ where
 pub struct InputPump {
     paste: PasteTracker,
     alt_screen: AltScreenTracker,
+    tui_activity: TuiActivityTracker,
     parser: Parser,
 }
 
@@ -337,6 +339,25 @@ impl InputPump {
         let now_alt_screen = self.alt_screen.feed(b);
         if was_alt_screen != now_alt_screen {
             self.parser.reset();
+            // A vim/less-style child that owns the standard alt
+            // screen scribbles cursor positioning while it owns
+            // the screen; if we let those signals accumulate the
+            // post-exit window would leak a stale "TUI-active"
+            // flag into ~512 bytes of normal prompt time after
+            // the child hands the primary screen back. Resetting
+            // on every alt-screen transition keeps the
+            // primary-screen heuristic and the alt-screen tracker
+            // independent.
+            self.tui_activity.reset();
+        }
+        // Skip the TUI-activity recognizer while the child owns
+        // the standard alt screen — the alt-screen tracker is
+        // the authoritative source for that case, and feeding
+        // every vim-side cursor sequence into the recognizer
+        // would only buy us false positives once the user
+        // returns to the primary screen.
+        if !now_alt_screen {
+            self.tui_activity.feed(b);
         }
         now_alt_screen
     }
@@ -355,6 +376,20 @@ impl InputPump {
 
     pub fn is_alt_screen(&self) -> bool {
         self.alt_screen.is_alt_screen()
+    }
+
+    /// Whether the wrapped child currently appears to own the
+    /// terminal — either through the standard alt-screen mode
+    /// set, or through the heuristic at
+    /// [`super::tui_activity::TuiActivityTracker`] for TUIs that
+    /// repaint the primary screen instead.
+    ///
+    /// The animation renderer consults this before deciding
+    /// whether to acquire the alt-screen overlay; when `true`,
+    /// it falls back to a non-overlay gag so the child's screen
+    /// model is not corrupted (roadmap #186 / fix #188).
+    pub fn is_child_owning_screen(&self) -> bool {
+        self.alt_screen.is_alt_screen() || self.tui_activity.is_tui_active()
     }
 }
 
@@ -833,6 +868,48 @@ mod tests {
         assert_eq!(
             outcomes_for_input(&mut pump, b":q!\n"),
             vec![Outcome::QBang]
+        );
+    }
+
+    #[test]
+    fn is_child_owning_screen_reflects_alt_screen_state() {
+        let mut pump = InputPump::new();
+        assert!(!pump.is_child_owning_screen());
+        pump.feed_child_output_slice(ENTER_ALT);
+        assert!(pump.is_child_owning_screen());
+        pump.feed_child_output_slice(LEAVE_ALT);
+        assert!(!pump.is_child_owning_screen());
+    }
+
+    #[test]
+    fn is_child_owning_screen_reflects_tui_activity() {
+        // Issue #188: a child that repaints the primary screen
+        // without entering alt-screen must still suppress the
+        // animation overlay.
+        let mut pump = InputPump::new();
+        pump.feed_child_output_slice(b"\x1b[2J\x1b[H");
+        assert!(!pump.is_alt_screen(), "TUI activity is not alt-screen");
+        assert!(
+            pump.is_child_owning_screen(),
+            "TUI activity should flag child-owns-screen"
+        );
+    }
+
+    #[test]
+    fn alt_screen_exit_resets_post_exit_tui_window() {
+        // Regression for #188 review: a vim-like child that
+        // emits cursor positioning while it owns the alt screen
+        // must not leak a stale "TUI-active" flag into the next
+        // ~512 bytes of normal prompt time after the alt screen
+        // closes.
+        let mut pump = InputPump::new();
+        // Vim enters alt-screen, scribbles cursor positioning,
+        // then leaves.
+        pump.feed_child_output_slice(b"\x1b[?1049h\x1b[10;20H\x1b[2J\x1b[?1049l");
+        assert!(!pump.is_alt_screen(), "alt-screen left");
+        assert!(
+            !pump.is_child_owning_screen(),
+            "alt-screen exit must reset the TUI-activity window"
         );
     }
 
