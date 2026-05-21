@@ -21,20 +21,35 @@
 //! Recognized signals (any one of these flips the flag):
 //!
 //! - **ED — `\x1b[2J` / `\x1b[3J`**: erase entire (or scrollback)
-//!   display. Every TUI calls this to repaint the screen.
+//!   display. Every TUI calls one of these to repaint the screen.
+//!   Bare `\x1b[J` is ED0 (clear from cursor to end of screen)
+//!   and is intentionally **not** recognized — it is too common
+//!   in normal shell redraw/clear flows and would false-positive
+//!   the heuristic on every prompt refresh.
 //! - **CUP — `\x1b[<row>;<col>H` / `\x1b[<row>;<col>f`**: cursor
 //!   position. Plain shells emit this for the prompt occasionally;
 //!   TUIs hammer it. The window-based decay keeps false positives
 //!   bounded.
-//! - **DECSC / DECRC — `\x1b 7` / `\x1b 8`**: save / restore
-//!   cursor. Often paired with cursor positioning by full-screen
-//!   apps.
 //!
-//! The alt-screen tracker covers `\x1b[?<n>h`-style private-mode
-//! sets including the alt-screen variants, so this tracker
-//! intentionally does **not** observe `?` private-mode sequences
-//! at all — the alt-screen tracker is the authoritative source
-//! for them, and double-counting would inflate false positives.
+//! Deliberately **not** recognized:
+//!
+//! - `\x1b[?<n>h`-style private-mode sets are covered by the
+//!   alt-screen tracker; double-counting would inflate false
+//!   positives.
+//! - DECSC / DECRC (`\x1b 7` / `\x1b 8`): many shells and prompt
+//!   themes emit save/restore-cursor around every prompt
+//!   redraw, which would keep `is_tui_active` flipped through
+//!   the entire interactive session. The heuristic stays
+//!   focused on signals that indicate a *repaint* (clear +
+//!   positioning), not generic cursor stack manipulation.
+//!
+//! The caller (`InputPump`) is also responsible for keeping the
+//! tracker in sync with alt-screen entry/exit — feeding signals
+//! to this tracker while the standard alt-screen is owned would
+//! make the post-exit window outlive the alt-screen transition
+//! and gate the animation for ~512 bytes of normal prompt time
+//! after a vim-like child returns to the primary screen. See
+//! `InputPump::feed_child_output_byte` for the wiring.
 //!
 //! [#186]: https://github.com/kurone-kito/qorrection/issues/186
 //! [#188]: https://github.com/kurone-kito/qorrection/issues/188
@@ -65,6 +80,13 @@ enum State {
 #[derive(Debug, Default)]
 pub struct TuiActivityTracker {
     state: State,
+    /// First numeric parameter of the in-progress CSI sequence,
+    /// or `None` if no digit has arrived yet. ED only counts as a
+    /// repaint signal when the parameter is explicitly `2` or `3`
+    /// (full clear / clear scrollback); bare `\x1b[J` (ED0,
+    /// clear-to-end-of-screen) is too common in normal shell
+    /// redraw to be useful here.
+    csi_param: Option<u32>,
     /// Bytes observed since the last recognized TUI signal
     /// completed. Saturates at `TUI_WINDOW_BYTES` so a long-lived
     /// non-TUI session does not require unbounded arithmetic.
@@ -85,6 +107,21 @@ impl TuiActivityTracker {
         self.saw_any_signal && self.bytes_since_signal < TUI_WINDOW_BYTES
     }
 
+    /// Reset the recognizer and the decay window.
+    ///
+    /// Called by the input pump when the standard alt-screen
+    /// tracker transitions (entry **or** exit) so a vim/less
+    /// session that scribbles cursor positioning while it owns
+    /// the alt screen does not leak a stale "TUI-active" flag
+    /// into the next ~512 bytes of normal prompt time after it
+    /// hands the primary screen back.
+    pub fn reset(&mut self) {
+        self.state = State::Ground;
+        self.csi_param = None;
+        self.bytes_since_signal = TUI_WINDOW_BYTES;
+        self.saw_any_signal = false;
+    }
+
     /// Consume one byte from the child's output stream.
     pub fn feed(&mut self, b: u8) {
         // Count every observed byte against the decay window. A
@@ -101,35 +138,69 @@ impl TuiActivityTracker {
             // ESC always restarts the recognizer so a malformed
             // sequence followed by a real `\x1b[2J` still flips
             // the flag.
-            (_, 0x1b) => self.state = State::Esc,
-            // DECSC / DECRC fire on the byte after a bare `ESC`.
-            (State::Esc, b'7') | (State::Esc, b'8') => {
-                self.mark_active();
-                self.state = State::Ground;
+            (_, 0x1b) => {
+                self.state = State::Esc;
+                self.csi_param = None;
             }
-            (State::Esc, b'[') => self.state = State::Csi,
+            (State::Esc, b'[') => {
+                self.state = State::Csi;
+                self.csi_param = None;
+            }
             (State::Esc, _) => self.state = State::Ground,
-            // CSI parameter bytes — keep collecting until a final
-            // byte arrives.
-            (State::Csi, b'0'..=b'9' | b';') => {}
+            // CSI parameter bytes — accumulate the first numeric
+            // parameter so ED's variant can be distinguished from
+            // bare ED0.
+            (State::Csi, b @ b'0'..=b'9') => {
+                let digit = u32::from(b - b'0');
+                self.csi_param = Some(
+                    self.csi_param
+                        .unwrap_or(0)
+                        .saturating_mul(10)
+                        .saturating_add(digit),
+                );
+            }
+            (State::Csi, b';') => {
+                // Sub-parameter separator. ED only takes one
+                // parameter; once a `;` appears we stop counting
+                // the first parameter and let the sequence finish
+                // on whatever terminator follows. Setting the
+                // accumulator to a value outside `{2, 3}` keeps
+                // ED-2/3 from false-firing on a multi-parameter
+                // sequence that happens to start with `2`.
+                self.csi_param = Some(u32::MAX);
+            }
             // CUP — cursor position. Both `H` and `f` are CUP
             // terminators per ECMA-48.
             (State::Csi, b'H' | b'f') => {
                 self.mark_active();
                 self.state = State::Ground;
+                self.csi_param = None;
             }
-            // ED — erase display. Catches `\x1b[2J`, `\x1b[3J`,
-            // and bare `\x1b[J`; all of them are repaint signals.
+            // ED — erase display. Only treat full-screen
+            // variants as TUI signals: `\x1b[2J` (full clear) and
+            // `\x1b[3J` (clear scrollback). Bare `\x1b[J` (ED0,
+            // clear from cursor to end of screen) is too common
+            // in normal shell redraw and is intentionally
+            // ignored.
             (State::Csi, b'J') => {
-                self.mark_active();
+                if matches!(self.csi_param, Some(2) | Some(3)) {
+                    self.mark_active();
+                }
                 self.state = State::Ground;
+                self.csi_param = None;
             }
             // `?` private-prefixed sequences are owned by the
             // alt-screen tracker; do not double-count them here.
-            (State::Csi, b'?') => self.state = State::Ground,
+            (State::Csi, b'?') => {
+                self.state = State::Ground;
+                self.csi_param = None;
+            }
             // Any other CSI terminator: not a TUI signal we
             // track. Drop back to Ground.
-            (State::Csi, _) => self.state = State::Ground,
+            (State::Csi, _) => {
+                self.state = State::Ground;
+                self.csi_param = None;
+            }
             _ => self.state = State::Ground,
         }
     }
@@ -172,10 +243,21 @@ mod tests {
     }
 
     #[test]
-    fn bare_ed_j_flips_to_tui_active() {
+    fn bare_ed_j_does_not_flip() {
+        // ED0 (clear from cursor to end of screen) is too common
+        // in normal shell redraw to be a useful TUI signal.
         let mut t = TuiActivityTracker::new();
         t.feed_slice(b"\x1b[J");
-        assert!(t.is_tui_active());
+        assert!(!t.is_tui_active());
+    }
+
+    #[test]
+    fn ed_1j_does_not_flip() {
+        // ED1 (clear from start of screen to cursor) is not a
+        // full-screen repaint and is not recognized.
+        let mut t = TuiActivityTracker::new();
+        t.feed_slice(b"\x1b[1J");
+        assert!(!t.is_tui_active());
     }
 
     #[test]
@@ -193,17 +275,29 @@ mod tests {
     }
 
     #[test]
-    fn decsc_flips_to_tui_active() {
+    fn decsc_does_not_flip() {
+        // DECSC `ESC 7` is emitted by many shell prompts around
+        // every redraw; keeping it as a TUI signal would gate the
+        // animation through the entire interactive session.
         let mut t = TuiActivityTracker::new();
         t.feed_slice(b"\x1b7");
-        assert!(t.is_tui_active());
+        assert!(!t.is_tui_active());
     }
 
     #[test]
-    fn decrc_flips_to_tui_active() {
+    fn decrc_does_not_flip() {
         let mut t = TuiActivityTracker::new();
         t.feed_slice(b"\x1b8");
+        assert!(!t.is_tui_active());
+    }
+
+    #[test]
+    fn reset_clears_active_flag() {
+        let mut t = TuiActivityTracker::new();
+        t.feed_slice(b"\x1b[2J");
         assert!(t.is_tui_active());
+        t.reset();
+        assert!(!t.is_tui_active(), "reset must clear the active flag");
     }
 
     #[test]

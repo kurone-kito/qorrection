@@ -339,13 +339,26 @@ impl InputPump {
         let now_alt_screen = self.alt_screen.feed(b);
         if was_alt_screen != now_alt_screen {
             self.parser.reset();
+            // A vim/less-style child that owns the standard alt
+            // screen scribbles cursor positioning while it owns
+            // the screen; if we let those signals accumulate the
+            // post-exit window would leak a stale "TUI-active"
+            // flag into ~512 bytes of normal prompt time after
+            // the child hands the primary screen back. Resetting
+            // on every alt-screen transition keeps the
+            // primary-screen heuristic and the alt-screen tracker
+            // independent.
+            self.tui_activity.reset();
         }
-        // The TUI-activity tracker observes the same byte stream
-        // so it can flip the "child is repainting" flag for
-        // children that draw a TUI without entering the alt
-        // screen (Codex CLI and similar). See
-        // `crate::trigger::tui_activity` for the rationale.
-        self.tui_activity.feed(b);
+        // Skip the TUI-activity recognizer while the child owns
+        // the standard alt screen — the alt-screen tracker is
+        // the authoritative source for that case, and feeding
+        // every vim-side cursor sequence into the recognizer
+        // would only buy us false positives once the user
+        // returns to the primary screen.
+        if !now_alt_screen {
+            self.tui_activity.feed(b);
+        }
         now_alt_screen
     }
 
@@ -879,6 +892,24 @@ mod tests {
         assert!(
             pump.is_child_owning_screen(),
             "TUI activity should flag child-owns-screen"
+        );
+    }
+
+    #[test]
+    fn alt_screen_exit_resets_post_exit_tui_window() {
+        // Regression for #188 review: a vim-like child that
+        // emits cursor positioning while it owns the alt screen
+        // must not leak a stale "TUI-active" flag into the next
+        // ~512 bytes of normal prompt time after the alt screen
+        // closes.
+        let mut pump = InputPump::new();
+        // Vim enters alt-screen, scribbles cursor positioning,
+        // then leaves.
+        pump.feed_child_output_slice(b"\x1b[?1049h\x1b[10;20H\x1b[2J\x1b[?1049l");
+        assert!(!pump.is_alt_screen(), "alt-screen left");
+        assert!(
+            !pump.is_child_owning_screen(),
+            "alt-screen exit must reset the TUI-activity window"
         );
     }
 
