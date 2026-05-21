@@ -206,7 +206,21 @@ where
         for &b in &buf[..written] {
             let outcome = observe_input_byte(&self.input, b, &mut self.poison_warned).outcome();
             if outcome != Outcome::None {
-                (self.on_trigger)(outcome)?;
+                // Render is a side effect — failing it must not
+                // poison the `Write::write` contract. Per
+                // `std::io::Write`, an `Err` from `write` implies
+                // no bytes were transferred; since `written` bytes
+                // have already reached the child PTY, returning an
+                // error here would cause `write_all` and friends
+                // to retry and duplicate them. Surface the
+                // callback failure as a warning instead.
+                if let Err(err) = (self.on_trigger)(outcome) {
+                    tracing::warn!(
+                        error = %err,
+                        ?outcome,
+                        "trigger callback failed after bytes were forwarded; continuing without retry"
+                    );
+                }
             }
         }
         Ok(written)
