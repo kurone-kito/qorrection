@@ -340,11 +340,17 @@ where
                 input.clone(),
                 move |outcome| {
                     // Snapshot the child-screen-ownership state at
-                    // trigger fire time. The pump's `OutputArbiter`
-                    // keeps the trackers fresh as the child emits
-                    // bytes, so this read sees the latest output
-                    // observed before the user's terminator byte
-                    // landed.
+                    // trigger fire time. The `OutputArbiter`
+                    // (running on the child→host thread) keeps the
+                    // shared pump's trackers fresh as the child
+                    // emits bytes. This read therefore reflects
+                    // every child output byte already observed
+                    // when the trigger fired; the terminator byte
+                    // itself was just forwarded to the child but
+                    // the child has not yet had a chance to react,
+                    // so any TUI-active flag here was set by
+                    // earlier output and is the right signal for
+                    // "is the child currently drawing?".
                     let child_owns_screen = match callback_input.lock() {
                         Ok(g) => g.is_child_owning_screen(),
                         Err(poisoned) => poisoned.into_inner().is_child_owning_screen(),

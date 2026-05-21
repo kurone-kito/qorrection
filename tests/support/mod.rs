@@ -43,7 +43,7 @@ impl ArmedHelper {
         )
     }
 
-    /// Create a helper that emulates a TUI: emits an
+    /// Create a Unix helper that emulates a TUI: emits an
     /// erase-display + cursor-home sequence on startup before
     /// looping on stdin like [`echo_stdin`].
     ///
@@ -54,6 +54,15 @@ impl ArmedHelper {
     /// the alt-screen overlay. This helper is the minimal repro
     /// for that path; the bug fix is tracked by roadmap #186 /
     /// issue #188.
+    ///
+    /// The Windows fallback script does **not** currently emit
+    /// the TUI clear sequence — cmd.exe's escape-handling story
+    /// is awkward, and every Windows PTY test that exercises
+    /// this path is `#[ignore = "Windows ConPTY trigger-animation
+    /// E2E is tracked by issue #65"]` until that work lands.
+    /// Adding a Windows-side clear (via PowerShell or a Rust
+    /// helper binary) should ride along with the #65 ConPTY
+    /// re-enablement.
     #[allow(dead_code)]
     pub fn tui_clear_then_echo_stdin() -> Self {
         Self::from_scripts(

@@ -277,9 +277,11 @@ mod unix {
         // `TuiActivityTracker` before our trigger fires.
         session.exp_string("\u{1b}[2J")?;
         session.send_line(":q!")?;
-        // Look for the `:q!` fallback gag's signature substring
-        // — see `crate::anim::fallback::fallback`.
-        let before_gag = session.exp_string("[QQ]x9")?;
+        // Use the canonical gag string from `anim::fallback` so a
+        // wording tweak in the gag does not silently break this
+        // regression test.
+        let gag = qorrection::anim::fallback::fallback(qorrection::anim::fallback::Trigger::Bang);
+        let before_gag = session.exp_string(gag)?;
         session.send_control('d')?;
         let remaining = session.exp_eof()?;
 

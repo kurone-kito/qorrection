@@ -2,7 +2,7 @@
 //!
 //! [`AltScreenTracker`] (this module's sibling at
 //! [`crate::trigger::altscreen`]) only flips when the child uses
-//! the four standard alt-screen mode-set sequences
+//! the standard alt-screen mode-set sequences
 //! (`\x1b[?1049h`, `\x1b[?1047h`, `\x1b[?47h`). Modern AI CLIs
 //! such as Codex CLI render a TUI without entering alt-screen —
 //! they repaint the primary screen with cursor positioning and
@@ -41,10 +41,13 @@
 
 /// Number of subsequent non-signalling output bytes after which
 /// the tracker considers the child to no longer be in a TUI
-/// repaint cycle. Roughly one screen's worth of plain text on a
-/// typical 80-column terminal; tuned conservatively so a single
-/// stale repaint signal does not lock the gag suppression on
-/// for the rest of the session.
+/// repaint cycle. ~512 bytes is roughly six 80-column lines of
+/// plain text — short enough that a one-off startup signal
+/// stops gating the animation as soon as the child settles into
+/// a normal prompt, long enough to cover the typical
+/// repaint-then-prompt sequence a TUI emits in a single tick.
+/// Tune this constant if real-world Codex/Copilot sessions show
+/// the heuristic decaying too eagerly between repaints.
 const TUI_WINDOW_BYTES: usize = 512;
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
