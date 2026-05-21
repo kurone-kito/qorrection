@@ -607,6 +607,27 @@ mod tests {
     }
 
     #[test]
+    fn input_interceptor_swallows_on_trigger_error_to_preserve_write_contract() {
+        // Regression for #187: `Write::write` returning `Err` implies
+        // no bytes were transferred. The observe-only path writes
+        // first then fires the callback, so a callback failure must
+        // be demoted to a warning instead of propagated — otherwise
+        // `write_all` would retry the already-forwarded buffer and
+        // duplicate the user's keystrokes into the child PTY.
+        let input = shared_input_pump();
+        let mut interceptor = InputInterceptor::new(Vec::new(), input, |_outcome| {
+            Err(io::Error::other("render failed"))
+        });
+
+        // `:q\n` completes the `Q` trigger on `\n`; the callback
+        // returns Err but the write must still report Ok and the
+        // bytes must still reach the child.
+        let written = interceptor.write(b":q\n").unwrap();
+        assert_eq!(written, 3);
+        assert_eq!(interceptor.inner().as_slice(), b":q\n");
+    }
+
+    #[test]
     fn input_interceptor_preserves_cross_write_trigger_state() {
         let input = shared_input_pump();
         let fired = Arc::new(Mutex::new(Vec::new()));
