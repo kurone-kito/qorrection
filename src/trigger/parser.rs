@@ -35,14 +35,18 @@
 //! ## Phase E pump contract
 //!
 //! This module classifies; the Phase E input pump owns which
-//! bytes reach the child PTY. When `feed` returns a non-`None`
-//! outcome on `\r`, the immediately following `\n` (if any) is
-//! the second half of a CRLF terminator and must be suppressed
-//! by the pump as well. The pump must also call [`Parser::reset`]
-//! on every armed/disarmed boundary (entering or leaving paste
-//! mode, alt-screen mode, or any other window during which bytes
-//! are routed past this parser) so that a partial dirty line
-//! cannot survive a bypass and poison the next clean line.
+//! bytes reach the child PTY. Since #187 the pump forwards every
+//! byte to the child verbatim — including `\r`, `\n`, and a CRLF
+//! pair that completes a trigger — and only treats observation
+//! outcomes as a signal to fire the animation. The pre-#187
+//! suppress-`\n`-after-`\r` rule no longer applies; consult the
+//! input adapter at `crate::trigger::input::InputInterceptor` for
+//! the current observe-then-forward contract. The pump must
+//! still call [`Parser::reset`] on every armed/disarmed boundary
+//! (entering or leaving paste mode, alt-screen mode, or any
+//! other window during which bytes are routed past this parser)
+//! so that a partial dirty line cannot survive a bypass and
+//! poison the next clean line.
 //!
 //! Subtle bypass rule: the byte that *terminates* a paste-end
 //! (`~` of `\x1b[201~`) or alt-screen-leave (`l` of
@@ -153,16 +157,6 @@ impl Parser {
     /// line cannot survive across a bypass window.
     pub fn reset(&mut self) {
         self.reset_line();
-    }
-
-    /// Whether the current line is still a possible trigger
-    /// prefix if more bytes arrive before the terminator.
-    pub(crate) fn can_still_match(&self) -> bool {
-        !self.dirty
-            && matches!(
-                self.buf.as_slice(),
-                b"" | b":" | b":q" | b":q!" | b":w" | b":wq"
-            )
     }
 
     /// Test/diagnostic helper: feed a slice and return the

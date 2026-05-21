@@ -104,21 +104,29 @@ impl<W> InputDetector<W> {
     }
 }
 
-/// Host-input [`Write`] adapter that suppresses fired trigger
-/// lines from the child PTY and invokes a render callback.
+/// Host-input [`Write`] adapter that observes the typed byte
+/// stream for trigger completions while forwarding every byte to
+/// the child PTY byte-for-byte.
 ///
-/// Only bytes on a line that is still a possible trigger prefix
-/// are held back. As soon as a line becomes impossible to match,
-/// the adapter flushes the buffered prefix and returns to normal
-/// passthrough for the rest of that line.
+/// Byte suppression is intentionally **not** a guarantee: the
+/// holdback parser this adapter used to carry would otherwise
+/// swallow `:` / `:q` / `:w` / `:wq` / `:q!` prefix bytes until
+/// the line classified, and the wrapped AI-CLI children in this
+/// project's arming allowlist (`copilot`, `codex`, `claude`,
+/// `aichat`, `gemini`, `qwen`, `ollama`) are the ones that
+/// normally echo typed bytes back to the user. Holding the prefix
+/// meant the user saw nothing on screen until the trigger settled
+/// — exactly the "only emojis come through" symptom reported
+/// against `q9 copilot`. None of the allowlisted commands
+/// interpret `:q*` as quit, so forwarding the bytes verbatim is
+/// safe; the gag still fires on a complete trigger line — `\r`,
+/// `\n`, or CRLF terminator — via the `on_trigger` callback. See
+/// roadmap #186 / fix #187 for the full rationale and the
+/// trade-offs against the abandoned holdback design.
 pub(crate) struct InputInterceptor<W> {
     inner: W,
     input: SharedInputPump,
     on_trigger: TriggerCallback,
-    holdback: Parser,
-    pending: Vec<u8>,
-    line_dirty: bool,
-    suppress_next_lf: bool,
     poison_warned: bool,
 }
 
@@ -129,10 +137,6 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InputInterceptor")
             .field("inner", &self.inner)
-            .field("holdback", &self.holdback)
-            .field("pending", &self.pending)
-            .field("line_dirty", &self.line_dirty)
-            .field("suppress_next_lf", &self.suppress_next_lf)
             .field("poison_warned", &self.poison_warned)
             .finish()
     }
@@ -147,10 +151,6 @@ impl<W> InputInterceptor<W> {
             inner,
             input,
             on_trigger: Box::new(on_trigger),
-            holdback: Parser::new(),
-            pending: Vec::new(),
-            line_dirty: false,
-            suppress_next_lf: false,
             poison_warned: false,
         }
     }
@@ -158,23 +158,6 @@ impl<W> InputInterceptor<W> {
     #[cfg(test)]
     pub(crate) fn inner(&self) -> &W {
         &self.inner
-    }
-
-    fn forward_pending(&mut self) -> io::Result<()>
-    where
-        W: Write,
-    {
-        for b in std::mem::take(&mut self.pending) {
-            self.inner.write_all(&[b])?;
-        }
-        Ok(())
-    }
-
-    fn forward_byte(&mut self, b: u8) -> io::Result<()>
-    where
-        W: Write,
-    {
-        self.inner.write_all(&[b])
     }
 }
 
@@ -209,65 +192,56 @@ where
     W: Write,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut consumed = 0;
-
+        // Process bytes one at a time, observing **before**
+        // forwarding so a child reaction to earlier keystrokes
+        // (e.g. an alt-screen toggle emitted in response to the
+        // first few bytes of a prompt command) cannot race the
+        // shared `InputPump`'s alt-screen state into the wrong
+        // value before this byte is classified. The output thread
+        // updates `alt_screen` from the child's stdout; if we
+        // forwarded first, the output thread could observe the
+        // child's `\x1b[?1049h` and flip the pump before we ever
+        // looked at the trailing `\r/\n` that completes a real
+        // trigger line, and the parser would bypass classification.
+        //
+        // Trade-offs encoded here:
+        //
+        // 1. Observation precedes forwarding per byte. The parser
+        //    state advances on observation, so a forward failure
+        //    after a successful observation leaks one byte's worth
+        //    of state — acceptable because the byte that did not
+        //    reach the child also cannot have produced an echo,
+        //    so any trigger that would have fired against the
+        //    leaked state is harmless.
+        // 2. `Write::write` contract: returning `Err` implies no
+        //    bytes were transferred. After the first successful
+        //    inner write, we cap the return value to `forwarded`
+        //    instead of propagating later errors, so callers like
+        //    `write_all` never retry already-forwarded bytes.
+        // 3. Trigger callback failures are demoted to a warning
+        //    for the same reason — render is a side effect of
+        //    observation, not a precondition for forwarding.
+        let mut forwarded = 0usize;
         for &b in buf {
-            if self.suppress_next_lf {
-                self.suppress_next_lf = false;
-                if b == b'\n' {
-                    consumed += 1;
-                    continue;
-                }
-            }
-
-            let observation = observe_input_byte(&self.input, b, &mut self.poison_warned);
-            match observation {
-                InputObservation::Bypassed(_) => {
-                    self.holdback.reset();
-                    self.line_dirty = false;
-                    self.forward_pending()?;
-                    self.forward_byte(b)?;
-                }
-                InputObservation::Parsed(observed) => {
-                    if self.line_dirty {
-                        self.forward_byte(b)?;
-                        if matches!(b, b'\r' | b'\n') {
-                            self.line_dirty = false;
-                            self.holdback.reset();
+            let outcome = observe_input_byte(&self.input, b, &mut self.poison_warned).outcome();
+            match self.inner.write_all(&[b]) {
+                Ok(()) => {
+                    forwarded += 1;
+                    if outcome != Outcome::None {
+                        if let Err(err) = (self.on_trigger)(outcome) {
+                            tracing::warn!(
+                                error = %err,
+                                ?outcome,
+                                "trigger callback failed; continuing without retry"
+                            );
                         }
-                        consumed += 1;
-                        continue;
-                    }
-
-                    let held = self.holdback.feed(b);
-                    debug_assert_eq!(
-                        held, observed,
-                        "holdback parser must mirror the shared input pump while armed"
-                    );
-
-                    if held != Outcome::None {
-                        self.pending.clear();
-                        if b == b'\r' {
-                            self.suppress_next_lf = true;
-                        }
-                        (self.on_trigger)(held)?;
-                    } else if matches!(b, b'\r' | b'\n') {
-                        self.forward_pending()?;
-                        self.forward_byte(b)?;
-                    } else if self.holdback.can_still_match() {
-                        self.pending.push(b);
-                    } else {
-                        self.forward_pending()?;
-                        self.forward_byte(b)?;
-                        self.line_dirty = true;
                     }
                 }
+                Err(e) if forwarded == 0 => return Err(e),
+                Err(_) => return Ok(forwarded),
             }
-
-            consumed += 1;
         }
-
-        Ok(consumed)
+        Ok(forwarded)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -631,7 +605,11 @@ mod tests {
     }
 
     #[test]
-    fn input_interceptor_swallows_trigger_and_fires_callback() {
+    fn input_interceptor_forwards_trigger_bytes_and_fires_callback() {
+        // Observe-only contract (#187): bytes that complete a
+        // trigger still fire the callback, but every byte is also
+        // forwarded to the child so the wrapped CLI can echo it
+        // back to the user.
         let input = shared_input_pump();
         let fired = Arc::new(Mutex::new(Vec::new()));
         let fired_probe = Arc::clone(&fired);
@@ -642,8 +620,29 @@ mod tests {
 
         interceptor.write_all(b":q\n").unwrap();
 
-        assert_eq!(interceptor.inner().as_slice(), b"");
+        assert_eq!(interceptor.inner().as_slice(), b":q\n");
         assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Q]);
+    }
+
+    #[test]
+    fn input_interceptor_swallows_on_trigger_error_to_preserve_write_contract() {
+        // Regression for #187: `Write::write` returning `Err` implies
+        // no bytes were transferred. The observe-only path writes
+        // first then fires the callback, so a callback failure must
+        // be demoted to a warning instead of propagated — otherwise
+        // `write_all` would retry the already-forwarded buffer and
+        // duplicate the user's keystrokes into the child PTY.
+        let input = shared_input_pump();
+        let mut interceptor = InputInterceptor::new(Vec::new(), input, |_outcome| {
+            Err(io::Error::other("render failed"))
+        });
+
+        // `:q\n` completes the `Q` trigger on `\n`; the callback
+        // returns Err but the write must still report Ok and the
+        // bytes must still reach the child.
+        let written = interceptor.write(b":q\n").unwrap();
+        assert_eq!(written, 3);
+        assert_eq!(interceptor.inner().as_slice(), b":q\n");
     }
 
     #[test]
@@ -660,7 +659,7 @@ mod tests {
         assert_eq!(interceptor.write(b"q").unwrap(), 1);
         assert_eq!(interceptor.write(b"\n").unwrap(), 1);
 
-        assert_eq!(interceptor.inner().as_slice(), b"");
+        assert_eq!(interceptor.inner().as_slice(), b":q\n");
         assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Q]);
     }
 
@@ -681,7 +680,10 @@ mod tests {
     }
 
     #[test]
-    fn input_interceptor_swallows_crlf_second_byte_after_fire() {
+    fn input_interceptor_forwards_crlf_after_fire() {
+        // Observe-only contract: a CRLF that completes a trigger
+        // still fires the callback once (on `\r`) and forwards both
+        // bytes verbatim — the `\n` is no longer suppressed.
         let input = shared_input_pump();
         let fired = Arc::new(Mutex::new(Vec::new()));
         let fired_probe = Arc::clone(&fired);
@@ -692,7 +694,7 @@ mod tests {
 
         interceptor.write_all(b":wq\r\n").unwrap();
 
-        assert_eq!(interceptor.inner().as_slice(), b"");
+        assert_eq!(interceptor.inner().as_slice(), b":wq\r\n");
         assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Wq]);
     }
 
@@ -904,7 +906,11 @@ mod tests {
     }
 
     #[test]
-    fn input_interceptor_suppress_lf_cleared_by_non_newline() {
+    fn input_interceptor_forwards_trailing_colon_after_fire() {
+        // Observe-only contract: the byte that completes the trigger
+        // (`\r` in `:wq\r:`) fires the callback once and every byte
+        // — including a stray `:` that starts the next line — is
+        // forwarded to the child verbatim.
         let input = shared_input_pump();
         let fired = Arc::new(Mutex::new(Vec::new()));
         let fired_probe = Arc::clone(&fired);
@@ -914,7 +920,7 @@ mod tests {
         });
         interceptor.write_all(b":wq\r:").unwrap();
         assert_eq!(fired.lock().unwrap().as_slice(), [Outcome::Wq]);
-        assert_eq!(interceptor.inner().as_slice(), b"");
+        assert_eq!(interceptor.inner().as_slice(), b":wq\r:");
     }
 
     #[test]

@@ -463,7 +463,11 @@ mod tests {
     }
 
     #[test]
-    fn armed_wiring_fires_animation_instead_of_forwarding_trigger_bytes() {
+    fn armed_wiring_fires_animation_and_forwards_trigger_bytes() {
+        // Roadmap #186 / fix #187 contract: trigger bytes are
+        // observed on the input side and fire the animation, but
+        // they are also forwarded to the child verbatim so the
+        // wrapped AI CLI can echo them back without delay.
         let mut wiring = wire_trigger_io(true, Vec::new(), Vec::new());
 
         wiring.host_to_child.write_all(b":q\n").unwrap();
@@ -473,8 +477,8 @@ mod tests {
         };
         assert_eq!(
             host.inner().as_slice(),
-            b"",
-            "fired trigger bytes must not reach the child PTY"
+            b":q\n",
+            "trigger bytes must still reach the child PTY (#187 observe-only contract)"
         );
 
         let ChildToHostWriter::Armed(child) = &wiring.child_to_host else {
