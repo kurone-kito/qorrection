@@ -26,10 +26,13 @@
 //!   and is intentionally **not** recognized — it is too common
 //!   in normal shell redraw/clear flows and would false-positive
 //!   the heuristic on every prompt refresh.
-//! - **CUP — `\x1b[<row>;<col>H` / `\x1b[<row>;<col>f`**: cursor
-//!   position. Plain shells emit this for the prompt occasionally;
-//!   TUIs hammer it. The window-based decay keeps false positives
-//!   bounded.
+//! - **CUP — any `\x1b[...H` or `\x1b[...f` terminator**: cursor
+//!   position. Recognized for every parameter shape, including
+//!   the bare cursor-home forms `\x1b[H` / `\x1b[f` and the
+//!   fully parameterized `\x1b[<row>;<col>H` / `\x1b[<row>;<col>f`.
+//!   Plain shells emit one of these for the prompt occasionally;
+//!   TUIs hammer them. The window-based decay keeps false
+//!   positives bounded.
 //!
 //! Deliberately **not** recognized:
 //!

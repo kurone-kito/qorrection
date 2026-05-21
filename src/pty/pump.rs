@@ -262,9 +262,10 @@ where
         let gag = fallback(trigger);
         let mut writer = host_stdout.lock();
         writer.write_all(gag.as_bytes())?;
-        // The host TTY is in raw mode (`crossterm::enable_raw_mode`)
-        // so an LF is not translated to CRLF; emit the carriage
-        // return explicitly to land the next byte on column 0.
+        // The host TTY is in raw mode (`crossterm::terminal::enable_raw_mode`
+        // via `crate::term::guard::RawGuard`) so an LF is not
+        // translated to CRLF; emit the carriage return explicitly
+        // to land the next byte on column 0.
         // Without `\r` the gag would leave the cursor parked at
         // the end of the gag text and any follow-up child output
         // would draw a diagonal staircase.
