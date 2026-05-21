@@ -149,15 +149,19 @@ mod unix {
         Ok(())
     }
 
-    /// Issue #53 E2E coverage: when an allowlisted child is
-    /// armed, typing `:q` must animate on the parent PTY without
-    /// forwarding that trigger line into the child. The helper's
-    /// first observed stdin line should therefore be the later
-    /// ordinary payload, proving the child survived the
-    /// animation.
+    /// Issue #53 + #186 / #187 E2E coverage: when an allowlisted
+    /// child is armed, typing `:q` must animate on the parent PTY
+    /// **and** forward the bytes to the child so the child can
+    /// echo them back. Byte suppression was removed by #187 — see
+    /// the inline comment for the contract.
     #[test]
-    fn q9_armed_helper_intercepts_q_and_keeps_child_alive() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn q9_armed_helper_q_fires_animation_with_byte_faithful_echo(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Roadmap #186 / fix #187 dropped the input-side holdback so
+        // wrapped AI CLIs see byte-faithful echo. This test no
+        // longer asserts byte suppression — instead, it asserts the
+        // animation fires *and* the helper child receives + echoes
+        // the trigger bytes back unchanged.
         let helper = support::ArmedHelper::echo_stdin();
         let mut command = q9();
         command.env("PATH", helper.path()).arg(helper.command());
@@ -165,13 +169,15 @@ mod unix {
         let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
         session.send_line(":q")?;
 
-        // The outer PTY may still locally echo the typed line
-        // before q9 switches presentation modes, so child
-        // suppression is proven by the later helper echo rather
-        // than by asserting byte-for-byte absence here.
-        let _before_animation = session.exp_string("\u{1b}[?1049h")?;
-
+        let before_animation = session.exp_string("\u{1b}[?1049h")?;
         let animation = session.exp_string("\u{1b}[?1049l")?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => panic!("expected armed helper to exit 0 after trigger, got {other:?}"),
+        }
+
         let normalized_animation = animation.replace("\r\n", "\n");
         assert!(
             normalized_animation.contains("\u{1b}[?25l"),
@@ -181,31 +187,63 @@ mod unix {
             normalized_animation.contains("\u{1b}[2J"),
             "expected animation to draw at least one frame, got {normalized_animation:?}"
         );
-        session.send_line("still-here")?;
-        session.exp_string("still-here")?;
-        let remaining = session.exp_eof()?;
 
-        match session.process.wait()? {
-            WaitStatus::Exited(_, 0) => {}
-            other => panic!("expected armed helper to exit 0 after follow-up input, got {other:?}"),
-        }
-
-        let normalized_remaining = remaining.replace("\r\n", "\n");
+        // Byte-faithful echo: the helper reads one line and prints
+        // it verbatim. Under the post-#187 observe-only contract, the
+        // `:q` bytes reach the child and the child's echo appears
+        // somewhere in the captured stream (the exact location vs.
+        // the animation is timing-dependent across threads).
+        let full = format!("{before_animation}{animation}{remaining}");
+        let normalized_full = full.replace("\r\n", "\n");
         assert!(
-            normalized_remaining.contains("still-here"),
-            "expected helper stdout to echo the follow-up line after animation, got {normalized_remaining:?}"
-        );
-        assert!(
-            !normalized_remaining.contains(":q"),
-            "expected swallowed trigger to stay out of helper output, got {normalized_remaining:?}"
+            normalized_full.contains(":q"),
+            "expected helper to echo the typed `:q` under the byte-faithful contract, got {normalized_full:?}"
         );
         Ok(())
     }
 
-    /// Issue #54 E2E coverage: when an allowlisted child is
-    /// armed, typing `:wq` on a 120-column PTY must render the
-    /// large scene that carries the spec-locked 418 label while
-    /// still suppressing the trigger from child stdin.
+    /// #186 / #187 regression: a non-trigger line that starts with
+    /// a former holdback prefix (`:`) must reach the armed child
+    /// verbatim and be echoed back without delay or truncation.
+    /// This pins the byte-faithful echo contract that fixed the
+    /// "only emojis come through" symptom on `q9 copilot`.
+    #[test]
+    fn q9_armed_helper_passes_colon_prefixed_non_trigger_through_verbatim(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let helper = support::ArmedHelper::echo_stdin();
+        let mut command = q9();
+        command.env("PATH", helper.path()).arg(helper.command());
+
+        let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
+        // `:foo` shares the `:` prefix with the trigger literals
+        // but immediately disqualifies on `f`. The pre-#187
+        // holdback parser would still delay the `:` byte until
+        // disqualification; the new contract forwards every byte
+        // immediately, so the helper sees `:foo` in one go.
+        session.send_line(":foo")?;
+        session.exp_string(":foo")?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => {
+                panic!("expected armed helper to exit 0 after non-trigger line, got {other:?}")
+            }
+        }
+
+        let normalized = remaining.replace("\r\n", "\n");
+        assert!(
+            !normalized.contains("\u{1b}[?1049h"),
+            "expected no animation overlay for the non-trigger line, got {normalized:?}"
+        );
+        Ok(())
+    }
+
+    /// Issue #54 + #186 / #187 E2E coverage: when an allowlisted
+    /// child is armed, typing `:wq` on a 120-column PTY must
+    /// render the large scene that carries the spec-locked 418
+    /// label **and** byte-faithfully echo the typed trigger back
+    /// through the child (post-#187 observe-only contract).
     #[test]
     fn q9_armed_helper_wq_shows_418_label() -> Result<(), Box<dyn std::error::Error>> {
         let helper = support::ArmedHelper::echo_stdin();
@@ -215,8 +253,15 @@ mod unix {
         let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
         session.send_line(":wq")?;
 
-        let _before_animation = session.exp_string("\u{1b}[?1049h")?;
+        let before_animation = session.exp_string("\u{1b}[?1049h")?;
         let animation = session.exp_string("\u{1b}[?1049l")?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => panic!("expected armed helper to exit 0 after trigger, got {other:?}"),
+        }
+
         let normalized_animation = animation.replace("\r\n", "\n");
         assert!(
             normalized_animation.contains("\u{1b}[2J"),
@@ -231,31 +276,20 @@ mod unix {
             "expected the large :wq scene to carry the 418 label, got {normalized_animation:?}"
         );
 
-        session.send_line("still-here")?;
-        session.exp_string("still-here")?;
-        let remaining = session.exp_eof()?;
-
-        match session.process.wait()? {
-            WaitStatus::Exited(_, 0) => {}
-            other => panic!("expected armed helper to exit 0 after follow-up input, got {other:?}"),
-        }
-
-        let normalized_remaining = remaining.replace("\r\n", "\n");
+        let full = format!("{before_animation}{animation}{remaining}");
+        let normalized_full = full.replace("\r\n", "\n");
         assert!(
-            normalized_remaining.contains("still-here"),
-            "expected helper stdout to echo the follow-up line after animation, got {normalized_remaining:?}"
-        );
-        assert!(
-            !normalized_remaining.contains(":wq"),
-            "expected swallowed trigger to stay out of helper output, got {normalized_remaining:?}"
+            normalized_full.contains(":wq"),
+            "expected helper to echo the typed `:wq` under the byte-faithful contract, got {normalized_full:?}"
         );
         Ok(())
     }
 
-    /// Issue #55 E2E coverage: when an allowlisted child is
-    /// armed, typing `:q!` on a wide PTY must render a convoy
-    /// frame with all nine `QUEUE` labels while still keeping
-    /// the trigger out of child stdin.
+    /// Issue #55 + #186 / #187 E2E coverage: when an allowlisted
+    /// child is armed, typing `:q!` on a wide PTY must render a
+    /// convoy frame with all nine `QUEUE` labels **and**
+    /// byte-faithfully echo the typed trigger back through the
+    /// child (post-#187 observe-only contract).
     #[test]
     fn q9_armed_helper_q_bang_shows_nine_car_parade() -> Result<(), Box<dyn std::error::Error>> {
         let helper = support::ArmedHelper::echo_stdin();
@@ -268,7 +302,7 @@ mod unix {
         let mut session = spawn_command(command, Some(TIMEOUT_MS))?;
         session.send_line(":q!")?;
 
-        let _before_animation = session.exp_string("\u{1b}[?1049h")?;
+        let before_animation = session.exp_string("\u{1b}[?1049h")?;
         // The full-width nine-car parade takes longer than a single
         // rexpect polling window on hosted macOS, so break the read at
         // the first fully visible convoy row and then wait only for the
@@ -276,6 +310,13 @@ mod unix {
         let (before_full_convoy, full_convoy_row) =
             session.exp_regex(&queue_run_regex(BANG_CARS))?;
         let after_full_convoy = session.exp_string("\u{1b}[?1049l")?;
+        let remaining = session.exp_eof()?;
+
+        match session.process.wait()? {
+            WaitStatus::Exited(_, 0) => {}
+            other => panic!("expected armed helper to exit 0 after trigger, got {other:?}"),
+        }
+
         let animation = format!("{before_full_convoy}{full_convoy_row}{after_full_convoy}");
         let normalized_animation = animation.replace("\r\n", "\n");
         assert!(
@@ -288,10 +329,6 @@ mod unix {
             "expected a fully visible nine-car convoy row, got {full_convoy_row:?}"
         );
         let max_queue_labels = max_frame_occurrences(&normalized_animation, "QUEUE");
-        // Pure scene tests already pin the exact nine-label
-        // geometry; this PTY E2E only needs enough repeated
-        // labels to prove q9 fired the `:q!` convoy end-to-end
-        // on a real host terminal without forwarding the trigger.
         assert!(
             max_queue_labels >= PARADE_MIN_VISIBLE_LABELS,
             "expected q9 to render a multi-car :q! convoy; best frame showed {max_queue_labels} labels in {normalized_animation:?}"
@@ -301,23 +338,11 @@ mod unix {
             "expected the :q! parade to avoid the :wq 418 banner, got {normalized_animation:?}"
         );
 
-        session.send_line("still-here")?;
-        session.exp_string("still-here")?;
-        let remaining = session.exp_eof()?;
-
-        match session.process.wait()? {
-            WaitStatus::Exited(_, 0) => {}
-            other => panic!("expected armed helper to exit 0 after follow-up input, got {other:?}"),
-        }
-
-        let normalized_remaining = remaining.replace("\r\n", "\n");
+        let full = format!("{before_animation}{animation}{remaining}");
+        let normalized_full = full.replace("\r\n", "\n");
         assert!(
-            normalized_remaining.contains("still-here"),
-            "expected helper stdout to echo the follow-up line after animation, got {normalized_remaining:?}"
-        );
-        assert!(
-            !normalized_remaining.contains(":q!"),
-            "expected swallowed trigger to stay out of helper output, got {normalized_remaining:?}"
+            normalized_full.contains(":q!"),
+            "expected helper to echo the typed `:q!` under the byte-faithful contract, got {normalized_full:?}"
         );
         Ok(())
     }
@@ -594,7 +619,7 @@ mod windows {
     /// Tracking issue: <https://github.com/kurone-kito/qorrection/issues/65>.
     #[test]
     #[ignore = "Windows ConPTY trigger-animation E2E is tracked by issue #65"]
-    fn q9_armed_helper_intercepts_q_and_keeps_child_alive() {}
+    fn q9_armed_helper_q_fires_animation_with_byte_faithful_echo() {}
 
     /// Windows ConPTY trigger-animation E2E for the large `:wq`
     /// 418 scene is tracked separately for v0.1 because this
