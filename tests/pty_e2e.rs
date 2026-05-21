@@ -171,6 +171,13 @@ mod unix {
 
         let before_animation = session.exp_string("\u{1b}[?1049h")?;
         let animation = session.exp_string("\u{1b}[?1049l")?;
+        // The looping `echo_stdin` helper stays blocked on the
+        // next `read` after echoing the trigger line; releasing
+        // it with Ctrl-D lets the animation tear down cleanly
+        // without the wait/drain supervisor undercounting the
+        // in-flight render frames (see the helper docstring for
+        // the post-#187 race rationale).
+        session.send_control('d')?;
         let remaining = session.exp_eof()?;
 
         match session.process.wait()? {
@@ -188,11 +195,11 @@ mod unix {
             "expected animation to draw at least one frame, got {normalized_animation:?}"
         );
 
-        // Byte-faithful echo: the helper reads one line and prints
-        // it verbatim. Under the post-#187 observe-only contract, the
-        // `:q` bytes reach the child and the child's echo appears
-        // somewhere in the captured stream (the exact location vs.
-        // the animation is timing-dependent across threads).
+        // Byte-faithful echo: the helper echoes each line of stdin.
+        // Under the post-#187 observe-only contract, the `:q` bytes
+        // reach the child and the child's echo appears somewhere
+        // in the captured stream (the exact location vs. the
+        // animation is timing-dependent across threads).
         let full = format!("{before_animation}{animation}{remaining}");
         let normalized_full = full.replace("\r\n", "\n");
         assert!(
@@ -221,7 +228,10 @@ mod unix {
         // disqualification; the new contract forwards every byte
         // immediately, so the helper sees `:foo` in one go.
         session.send_line(":foo")?;
-        session.exp_string(":foo")?;
+        let before_foo = session.exp_string(":foo")?;
+        // Helper loops on `read`; release it with Ctrl-D so the
+        // test can observe EOF.
+        session.send_control('d')?;
         let remaining = session.exp_eof()?;
 
         match session.process.wait()? {
@@ -231,7 +241,12 @@ mod unix {
             }
         }
 
-        let normalized = remaining.replace("\r\n", "\n");
+        // Check the captured prefix too — `exp_string` consumes
+        // and returns everything before the match, so a stray
+        // animation overlay emitted before `:foo` appears must
+        // not be silently dropped from this guard.
+        let full = format!("{before_foo}{remaining}");
+        let normalized = full.replace("\r\n", "\n");
         assert!(
             !normalized.contains("\u{1b}[?1049h"),
             "expected no animation overlay for the non-trigger line, got {normalized:?}"
@@ -255,6 +270,9 @@ mod unix {
 
         let before_animation = session.exp_string("\u{1b}[?1049h")?;
         let animation = session.exp_string("\u{1b}[?1049l")?;
+        // Release the looping helper so the test can observe EOF
+        // without keeping the child alive past the animation.
+        session.send_control('d')?;
         let remaining = session.exp_eof()?;
 
         match session.process.wait()? {
@@ -310,6 +328,9 @@ mod unix {
         let (before_full_convoy, full_convoy_row) =
             session.exp_regex(&queue_run_regex(BANG_CARS))?;
         let after_full_convoy = session.exp_string("\u{1b}[?1049l")?;
+        // Release the looping helper so the test can observe EOF
+        // without keeping the child alive past the animation.
+        session.send_control('d')?;
         let remaining = session.exp_eof()?;
 
         match session.process.wait()? {

@@ -119,10 +119,10 @@ impl<W> InputDetector<W> {
 /// — exactly the "only emojis come through" symptom reported
 /// against `q9 copilot`. None of the allowlisted commands
 /// interpret `:q*` as quit, so forwarding the bytes verbatim is
-/// safe; the gag still fires on a clean `:q*\r` line via the
-/// `on_trigger` callback. See roadmap #186 / fix #187 for the
-/// full rationale and the trade-offs against the abandoned
-/// holdback design.
+/// safe; the gag still fires on a complete trigger line — `\r`,
+/// `\n`, or CRLF terminator — via the `on_trigger` callback. See
+/// roadmap #186 / fix #187 for the full rationale and the
+/// trade-offs against the abandoned holdback design.
 pub(crate) struct InputInterceptor<W> {
     inner: W,
     input: SharedInputPump,
@@ -192,38 +192,56 @@ where
     W: Write,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Forward the buffer to the child first so the child can
-        // echo it back without delay. Then observe each accepted
-        // byte against the shared pump; bypassed bytes (paste /
-        // alt-screen) return `Outcome::None` and never fire the
-        // callback. Bytes that complete a trigger fire the
-        // animation, but the bytes themselves are already on
-        // their way to the child — `q9` no longer suppresses them.
-        let written = self.inner.write(buf)?;
-        if written == 0 {
-            return Ok(0);
-        }
-        for &b in &buf[..written] {
+        // Process bytes one at a time, observing **before**
+        // forwarding so a child reaction to earlier keystrokes
+        // (e.g. an alt-screen toggle emitted in response to the
+        // first few bytes of a prompt command) cannot race the
+        // shared `InputPump`'s alt-screen state into the wrong
+        // value before this byte is classified. The output thread
+        // updates `alt_screen` from the child's stdout; if we
+        // forwarded first, the output thread could observe the
+        // child's `\x1b[?1049h` and flip the pump before we ever
+        // looked at the trailing `\r/\n` that completes a real
+        // trigger line, and the parser would bypass classification.
+        //
+        // Trade-offs encoded here:
+        //
+        // 1. Observation precedes forwarding per byte. The parser
+        //    state advances on observation, so a forward failure
+        //    after a successful observation leaks one byte's worth
+        //    of state — acceptable because the byte that did not
+        //    reach the child also cannot have produced an echo,
+        //    so any trigger that would have fired against the
+        //    leaked state is harmless.
+        // 2. `Write::write` contract: returning `Err` implies no
+        //    bytes were transferred. After the first successful
+        //    inner write, we cap the return value to `forwarded`
+        //    instead of propagating later errors, so callers like
+        //    `write_all` never retry already-forwarded bytes.
+        // 3. Trigger callback failures are demoted to a warning
+        //    for the same reason — render is a side effect of
+        //    observation, not a precondition for forwarding.
+        let mut forwarded = 0usize;
+        for &b in buf {
             let outcome = observe_input_byte(&self.input, b, &mut self.poison_warned).outcome();
-            if outcome != Outcome::None {
-                // Render is a side effect — failing it must not
-                // poison the `Write::write` contract. Per
-                // `std::io::Write`, an `Err` from `write` implies
-                // no bytes were transferred; since `written` bytes
-                // have already reached the child PTY, returning an
-                // error here would cause `write_all` and friends
-                // to retry and duplicate them. Surface the
-                // callback failure as a warning instead.
-                if let Err(err) = (self.on_trigger)(outcome) {
-                    tracing::warn!(
-                        error = %err,
-                        ?outcome,
-                        "trigger callback failed after bytes were forwarded; continuing without retry"
-                    );
+            match self.inner.write_all(&[b]) {
+                Ok(()) => {
+                    forwarded += 1;
+                    if outcome != Outcome::None {
+                        if let Err(err) = (self.on_trigger)(outcome) {
+                            tracing::warn!(
+                                error = %err,
+                                ?outcome,
+                                "trigger callback failed; continuing without retry"
+                            );
+                        }
+                    }
                 }
+                Err(e) if forwarded == 0 => return Err(e),
+                Err(_) => return Ok(forwarded),
             }
         }
-        Ok(written)
+        Ok(forwarded)
     }
 
     fn flush(&mut self) -> io::Result<()> {

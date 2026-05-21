@@ -18,16 +18,28 @@ pub struct ArmedHelper {
 }
 
 impl ArmedHelper {
-    /// Create a helper that echoes one stdin line to stdout.
+    /// Create a helper that echoes every stdin line back to stdout
+    /// until stdin closes (EOF, e.g. via Ctrl-D over a PTY or pipe
+    /// close in a non-TTY context).
     ///
-    /// Both platforms read exactly one line of stdin and emit it
-    /// followed by a single LF, so the fixture's contract is
-    /// identical regardless of whether the underlying shell is
-    /// `/bin/sh` or `cmd.exe`.
+    /// Looping (vs. read-one-line) is required for the post-#187
+    /// observe-only path: an armed PTY test that types `:q\n`
+    /// would otherwise see the helper exit immediately on the
+    /// trigger bytes — too fast for the wait/drain supervisor to
+    /// register the in-flight animation and extend the host->child
+    /// join budget, so the animation would be torn down mid-render
+    /// without emitting `\x1b[?1049l`. Keeping the helper blocked
+    /// on the next read keeps the child alive until the test
+    /// explicitly sends Ctrl-D.
+    ///
+    /// Both platforms loop on `read` and emit each line followed
+    /// by a single LF, so the fixture's contract is identical
+    /// regardless of whether the underlying shell is `/bin/sh` or
+    /// `cmd.exe`.
     pub fn echo_stdin() -> Self {
         Self::from_scripts(
-            "#!/bin/sh\nIFS= read -r line\nprintf '%s\\n' \"$line\"\n",
-            "@echo off\r\nsetlocal EnableDelayedExpansion\r\nset /p line=\r\necho(!line!\r\n",
+            "#!/bin/sh\nwhile IFS= read -r line; do printf '%s\\n' \"$line\"; done\n",
+            "@echo off\r\nsetlocal EnableDelayedExpansion\r\n:loop\r\nset \"line=\"\r\nset /p line=\r\nif not defined line goto :eof\r\necho(!line!\r\ngoto loop\r\n",
         )
     }
 
