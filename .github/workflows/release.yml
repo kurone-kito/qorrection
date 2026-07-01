@@ -105,7 +105,7 @@ jobs:
         # for the requested target, which already ships a working
         # musl cross compiler and linker for both x86_64 and
         # aarch64 — no host apt packages required.
-        uses: taiki-e/install-action@7769b73c2ec98c38dfcf2e18c83cfd4880c038c1 # v2
+        uses: taiki-e/install-action@16b05812d776ae1dfaabc8277e421fb6d2506419 # v2
         with:
           tool: cross
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
@@ -220,7 +220,7 @@ jobs:
             echo "::error::Refusing to publish: at least one matrix artifact is missing." >&2
             exit 1
           fi
-      - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+      - uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           files: dist/*
           generate_release_notes: true
