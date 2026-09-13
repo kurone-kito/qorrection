@@ -157,6 +157,49 @@ own claim state, blockers, and dependencies. This does not relax
 roadmap-level blocker gates such as `status:blocked-by-human` or
 `status:needs-decision`, which still stop child selection in Discover.
 
+## Project commands
+
+When a phase names a command set, run the corresponding commands.
+**Adapt this section for other projects.**
+
+If `.github/idd/config.json` exists and validates against the canonical
+schema at
+<https://kurone-kito.github.io/idd-skill/schemas/policy.schema.json>, its `commands`
+object overrides the table below. Policy fields such as
+`skipIssueAuthorApprovalGate` and `maintainerApprovalActorPolicy` are
+the recorded machine-readable policy. Absent values keep the gate
+enabled and default approval actors to
+`owners-and-maintainers-only`.
+
+<!-- dprint-ignore-start -->
+| Name                    | Commands                         |
+| ----------------------- | --------------------------------- |
+| **fix-validate**        | `cargo fmt && cargo clippy --all-targets -- -D warnings`      |
+| **pre-push-validate**   | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all-targets --all-features` |
+| **post-fix-validate**   | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all-targets --all-features` |
+| **install-deps**        | `true`       |
+| **issue-scope**         | `roadmap-first`                  |
+| **orphan-first-policy** | `none`                           |
+<!-- dprint-ignore-end -->
+
+Non-shell rows (**issue-scope**, **orphan-first-policy**) are workflow
+settings — read them literally, not as commands.
+
+`pre-push-validate` omits auto-fix. If lint fails, run
+**fix-validate**, commit, then re-run **pre-push-validate**.
+
+If **fix-validate**/**post-fix-validate** changes files, stage and
+commit before any push, rebase, or step needing a clean tree.
+
+`install-deps` must be idempotent: re-running it in fresh, reused, or
+recreated worktrees must not need manual cleanup or leave unexpected
+tracked changes.
+
+**Tool availability**: run commands only when tools exist. For Node.js:
+prefer project scripts; use `npx <tool>` if Node.js and `npx` are available
+and no relevant script exists; else use `true`. For other tools, use
+`true` when absent.
+
 ## Phase routing table
 
 Start by reading this file for shared definitions, then load the phase
