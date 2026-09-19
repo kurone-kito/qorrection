@@ -119,19 +119,13 @@ handling rules, see `idd-review-triage.instructions.md`.
 
 ## Project commands
 
-When a phase refers to a named command set, run the corresponding
-commands. **Adapt this section when applying this workflow to a
-different project.**
+The canonical project command table is in
+`.github/instructions/idd-overview-core.instructions.md`. Read that
+table for the repository-specific commands and workflow settings; this
+appendix does not define a second command table.
 
-If `.github/idd/config.json` exists and validates against the canonical
-schema at
-<https://kurone-kito.github.io/idd-skill/schemas/policy.schema.json>, its `commands`
-object overrides the table below. Policy fields such as
-`skipIssueAuthorApprovalGate` and `maintainerApprovalActorPolicy` are
-the recorded machine-readable policy. Absent values keep the gate
-enabled and default approval actors to
-`owners-and-maintainers-only`.
-
+<!-- The former generic command table is intentionally retired here. -->
+<!--
 | Name                    | Commands                                                                                                                                     |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **fix-validate**        | `npx dprint fmt "**/*.md" && npx markdownlint-cli2 --fix "**/*.md" && npx markdownlint-cli2 "**/*.md"`                                       |
@@ -159,6 +153,7 @@ unexpected tracked changes.
 prefer project scripts; use `npx <tool>` only when `npx` is available
 and no relevant script exists; else use `true`. For other tools, use
 `true` when absent.
+-->
 
 ## Critique pass
 

@@ -171,6 +171,11 @@ the recorded machine-readable policy. Absent values keep the gate
 enabled and default approval actors to
 `owners-and-maintainers-only`.
 
+Keep the top-level `issueScope` and `orphanFirstPolicy` values in
+`.github/idd/config.json` synchronized with the corresponding
+**issue-scope** and **orphan-first-policy** rows below. The `commands`
+object overrides command rows only.
+
 <!-- dprint-ignore-start -->
 | Name                    | Commands                         |
 | ----------------------- | --------------------------------- |
@@ -178,7 +183,7 @@ enabled and default approval actors to
 | **pre-push-validate**   | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all-targets --all-features` |
 | **post-fix-validate**   | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --all-targets --all-features` |
 | **install-deps**        | `true`       |
-| **issue-scope**         | `roadmap-first`                  |
+| **issue-scope**         | `roadmap`                        |
 | **orphan-first-policy** | `none`                           |
 <!-- dprint-ignore-end -->
 
