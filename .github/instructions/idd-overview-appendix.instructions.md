@@ -126,6 +126,7 @@ appendix does not define a second command table.
 
 <!-- The former generic command table is intentionally retired here. -->
 <!--
+```text
 | Name                    | Commands                                                                                                                                     |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **fix-validate**        | `npx dprint fmt "**/*.md" && npx markdownlint-cli2 --fix "**/*.md" && npx markdownlint-cli2 "**/*.md"`                                       |
@@ -153,6 +154,7 @@ unexpected tracked changes.
 prefer project scripts; use `npx <tool>` only when `npx` is available
 and no relevant script exists; else use `true`. For other tools, use
 `true` when absent.
+```
 -->
 
 ## Critique pass
