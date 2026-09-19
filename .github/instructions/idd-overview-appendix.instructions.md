@@ -124,6 +124,7 @@ The canonical project command table is in
 table for the repository-specific commands and workflow settings; this
 appendix does not define a second command table.
 
+<!-- markdownlint-disable MD013 -->
 <!-- The former generic command table is intentionally retired here. -->
 <!--
 ```text
@@ -156,6 +157,7 @@ and no relevant script exists; else use `true`. For other tools, use
 `true` when absent.
 ```
 -->
+<!-- markdownlint-enable MD013 -->
 
 ## Critique pass
 
